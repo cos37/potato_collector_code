@@ -1,7 +1,8 @@
 #include "ssd1306_driver.h"
 #include "ssd1306_hal.h"
 #include "ssd1306_font.h"
-#include "stm32f1xx_hal.h"
+#include <string.h>
+#include "i2c.h"
 
 #define SSD1306_WINDOW_W 128
 #define SSD1306_WINDOW_H 8
@@ -10,7 +11,7 @@
 #define SSD1306_I2C_ADDR        0x78     /* 7-bit 地址 0x3C 左移一位 */
 
 
-extern I2C_HandleTypeDef hi2c1;
+
 static uint8_t SSD1306_GRAM[8][128] = {0};
 static uint8_t dirity_page[8] = {0};
 static uint8_t dirity_line[8][2] = {0};
@@ -29,6 +30,7 @@ static uint8_t u32_to_str(uint32_t num, char *str)
     uint8_t i = 0;
     char temp[10];
     
+    HAL_Delay(200);  // 延时以确保显示稳定，实际使用中可以去掉或调整
     
     // 倒序存入临时数组
     while(num) {
@@ -59,12 +61,25 @@ static uint8_t int32_to_str(int32_t num, char *str)
     return i + digits;  // 总长度 = 符号位 + 数字位
 }
 
+void SSD1306_ClearScreen(void)
+{
+	
+    
+	for(uint8_t i=0;i<8;i++)
+	{
+		memset(SSD1306_GRAM[i],0x00,128);
+		SSD1306_SetCursor(i,0);
+        SSD1306_WriteArray(SSD1306_GRAM[i],128);
+	}
+}
+
 void SSD1306_Driver_Init(void)
 {
-    
 
-    HAL_Delay(500);  // 延时以确保显示稳定，实际使用中可以去掉或调整
 	
+    HAL_Delay(100);  // 延时以确保显示稳定，实际使用中可以去掉或调整
+	
+    SSD1306_HAL_Init();
 
 	SSD1306_WriteCommand(0xAE);	//关闭显示
 	
@@ -117,111 +132,62 @@ void SSD1306_Driver_Init(void)
  * @note 字符的高度为8像素，宽度为6像素,x,y为字符的左上角坐标，使用6x13字体
  */
 
-void SSD1306_Driver_WriteChar(uint8_t x, uint8_t y, char ch)
+void SSD1306_Driver_WriteChar(uint8_t line, uint8_t page, char ch)
 {
-    if(ch < ' ' || ch > '~') {
-        return; // 不显示不可打印字符
-    }
-    if(x >= SSD1306_WIDTH || y >= SSD1306_WINDOW_H * 8) {
-        return; // 超出显示范围
-    }
 
-    uint8_t page = y / 8; // 计算页码
-    uint8_t page_offset = y % 8; // 计算页内偏移
-    const uint8_t *char_bitmap = SSD1306_F6x8[ch - ' ']; // 获取字符的位图数据
-    uint8_t col = x;     // 列号即为x坐标
-    
-    for(uint8_t i = 0; i < 6; i++) { // 字符宽度为6像素 
-        uint8_t keep_up = SSD1306_GRAM[page][col + i] & (0xFF >> page_offset); 
-        uint8_t keep_down = SSD1306_GRAM[page + 1][col + i] & (0xFF << (8 - page_offset));
-        SSD1306_GRAM[page+1][col + i] = (char_bitmap[i] >> (page_offset)) | keep_down; 
-        SSD1306_GRAM[page][col + i] = (char_bitmap[i] << (8 - page_offset)) | keep_up;
-    }
-    
-    // 更新脏页和脏行信息
     dirity_page[page] = 1;
-    if(page_offset > 0) {
-        dirity_page[page + 1] = 1; // 如果字符跨页，下一页也标记为脏页
 
-        if((col + 6) > dirity_line[page + 1][1]) {
-            dirity_line[page + 1][1] = col + 6; // 更新下一页的最大列
-        }
-        if(col < dirity_line[page + 1][0]) {
-            dirity_line[page + 1][0] = col; // 更新下一页的最小列
-        } 
+    // 设置脏页和脏行
+    if(line < dirity_line[page][0]) { //  只有更小时才更新
+        dirity_line[page][0] = line;
     }
-    if(col < dirity_line[page][0]) {
-        dirity_line[page][0] = col; // 更新最小列
-    }
-    if((col + 6) > dirity_line[page][1]) {
-        dirity_line[page][1] = col + 6; // 更新最大列
+    if((line + 6) > dirity_line[page][1]) { //  只有更大时才更新
+        dirity_line[page][1] = line + 6;
     }
 
+    const uint8_t *aim_ch = SSD1306_F6x8[ch - ' '];
 
-
+    for(uint8_t i = 0; i < 6; i++)
+    {
+        SSD1306_GRAM[page][line + i] = aim_ch[i];
+    }
 }
 
-void SSD1306_Driver_WriteString(uint8_t x, uint8_t y, char *str,uint8_t len)
+void SSD1306_Driver_WriteString(uint8_t line, uint8_t page, char *str,uint8_t len)
 {
 
     for(uint8_t i = 0; i < len; i++)
     {
-        SSD1306_Driver_WriteChar(x, y, *str);
-        x += 6;
+        SSD1306_Driver_WriteChar(line, page, *str);
+        line += 6;
         str++;
     }
 
 }
 
-void SSD1306_Driver_WriteNums(uint8_t x, uint8_t y, uint32_t num)
+void SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num)
 {
     char str[10];
     uint8_t len = u32_to_str(num, str);
-    SSD1306_Driver_WriteString(x, y, str, len);
+    SSD1306_Driver_WriteString(line, page, str, len);
 }
 
-void SSD1306_Driver_WriteIntNums(uint8_t x, uint8_t y, int32_t num)
+void SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num)
 {
     char str[12];  // 最大11位 + 负号
     uint8_t len = int32_to_str(num, str);
-    SSD1306_Driver_WriteString(x, y, str, len); 
+    SSD1306_Driver_WriteString(line, page, str, len); 
 	
 }
 
-void SSD1306_Driver_WritePoint(uint8_t x, uint8_t y)
+void SSD1306_Driver_SetGRAMzero(uint8_t page)
 {
-    uint8_t page = y / 8;
-    SSD1306_GRAM[page][x] |= (1 << (y % 8)); // 设置对应位
-    dirity_page[page] = 1; // 标记页为脏页
-    if(x < dirity_line[page][0]) {
-        dirity_line[page][0] = x; // 更新最小列
-    }
-    if((x + 1) > dirity_line[page][1]) {
-        dirity_line[page][1] = x + 1; // 更新最大列
-    }
+    memset(SSD1306_GRAM[page], 0, SSD1306_WINDOW_W);
+    dirity_page[page] = 1;
+    dirity_line[page][0] = 0;
+    dirity_line[page][1] = SSD1306_WINDOW_W;
 }
 
-void SSD1306_Driver_Setbite(uint8_t x,uint8_t page,uint8_t bite)
-{
-    SSD1306_GRAM[page][x] |= bite; // 设置对应位
-    dirity_page[page] = 1; // 标记页为脏页
-    if(x < dirity_line[page][0]) {
-        dirity_line[page][0] = x; // 更新最小列
-    }
-    if((x + 1) > dirity_line[page][1]) {
-        dirity_line[page][1] = x + 1; // 更新最大列
-    }
-}
-void SSD1306_Driver_IMG(void)
-{
-    for(uint8_t i=0;i<8;i++)
-    {
-        memcpy(SSD1306_GRAM[i],face_img[i],128);
-        dirity_page[i]=1;
-        dirity_line[i][0]=0;
-        dirity_line[i][1]=128;
-    }
-}
 void SSD1306_Driver_Update(void)
 {
     uint8_t len=0;
@@ -236,5 +202,4 @@ void SSD1306_Driver_Update(void)
         }
     }
 }
-
 
