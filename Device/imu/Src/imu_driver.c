@@ -2,6 +2,7 @@
 #include "imu_i2c.h" /* 包含 IMU I2C 通信接口 */
 #include <stdint.h> /* 包含标准整数类型定义 */
 #include <string.h>
+#include "fixpoint.h" /* 包含定点数类型和操作函数 */
 
 /* I2C设备地址（7位） */
 #define IMU_ADDR_7BIT           0x23
@@ -52,7 +53,7 @@ void IMU_ReadAccel(float *ax,float *ay,float *az)
     *az = *az * scale;
 }
 
-float IMU_GetYaw(void)
+fp16_int32_t IMU_GetYaw(void)
 {
     uint8_t buf[12];
     float euler[3]; // 0:Roll, 1:Pitch, 2:Yaw
@@ -65,5 +66,6 @@ float IMU_GetYaw(void)
     memcpy(&euler[1], &buf[4], 4);
     memcpy(&euler[2], &buf[8], 4);
 
-    return euler[2]; // 返回 Yaw
+    return fp16_from_float(euler[2]); // 返回 Yaw
 }
+

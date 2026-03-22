@@ -23,5 +23,5 @@
 
 
 void IMU_ReadAccel(float *ax,float *ay,float *az);
-float IMU_GetYaw(void);
+fp16_int32_t IMU_GetYaw(void);
 #endif /* __IMU_DRIVER_H__ */
