@@ -60,11 +60,16 @@ static inline int32_t buff_to_q16_16(const uint8_t *p) {
 /* ======================================================== */
 /* 函数域：IMU驱动接口实现                                       */
 
-IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 0, .pitch = 0, .roll = 0 };
+IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 3, .pitch = 0, .roll = 0 };
 
 void IMU_Calibrate(void)
 {
     uint8_t cmd = IMU_FUNC_CALIB_IMU;
+    IMU_WriteReg(IMU_FUNC_CALIB_IMU, &cmd, 1);
+}
+void IMU_Reboot(void)
+{
+    uint8_t cmd = IMU_FUNC_REBOOT_DEVICE;
     IMU_WriteReg(IMU_FUNC_CALIB_IMU, &cmd, 1);
 }
 

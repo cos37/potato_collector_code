@@ -2,6 +2,7 @@
 #include "ssd1306_hal.h"
 #include "ssd1306_font.h"
 #include <string.h>
+#include <stdint.h>
 #include "i2c.h"
 
 #define SSD1306_WINDOW_W 128
@@ -25,12 +26,11 @@ void SSD1306_Dirty_Init(void)
     }
 }
 
-static uint8_t u32_to_str(uint32_t num, char *str)
+uint8_t u32_to_str(uint32_t num, char *str)
 {
     uint8_t i = 0;
     char temp[10];
     
-    HAL_Delay(200);  // 延时以确保显示稳定，实际使用中可以去掉或调整
     
     // 倒序存入临时数组
     while(num) {
@@ -48,7 +48,7 @@ static uint8_t u32_to_str(uint32_t num, char *str)
     return len;
 }
 
-static uint8_t int32_to_str(int32_t num, char *str)
+uint8_t int32_to_str(int32_t num, char *str)
 {
     uint8_t i = 0;
     
@@ -63,8 +63,6 @@ static uint8_t int32_to_str(int32_t num, char *str)
 
 void SSD1306_ClearScreen(void)
 {
-	
-    
 	for(uint8_t i=0;i<8;i++)
 	{
 		memset(SSD1306_GRAM[i],0x00,128);
@@ -165,19 +163,21 @@ void SSD1306_Driver_WriteString(uint8_t line, uint8_t page, char *str,uint8_t le
 
 }
 
-void SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num)
+uint8_t SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num)
 {
     char str[10];
     uint8_t len = u32_to_str(num, str);
     SSD1306_Driver_WriteString(line, page, str, len);
+    return len;
 }
 
-void SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num)
+uint8_t SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num)
 {
     char str[12];  // 最大11位 + 负号
     uint8_t len = int32_to_str(num, str);
     SSD1306_Driver_WriteString(line, page, str, len); 
 	
+    return len;
 }
 
 void SSD1306_Driver_SetGRAMzero(uint8_t page)

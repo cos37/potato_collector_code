@@ -20,6 +20,7 @@
     */
 #ifndef __IMU_DRIVER_H__
 #define __IMU_DRIVER_H__
+#include "fixpoint.h"
 
 typedef enum {
     IMU_IDLE = 0,
@@ -34,7 +35,10 @@ typedef struct {
     fp16_int32_t roll;
 } IMU_Handle_t;
 
+extern IMU_Handle_t imuHandle;
+
 void IMU_Calibrate(void);
+void IMU_Reboot(void);
 void IMU_ReadAccel(float *ax,float *ay,float *az);
 void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll);
 void IMU_DateProcess(void);

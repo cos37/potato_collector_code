@@ -10,11 +10,16 @@
 //     uint8_t dirty_line[2];
 //     uint8_t dirty_flag;
 // } SSD1306_Page; 
+//tool functions
+
+uint8_t u32_to_str(uint32_t num, char *str);
+uint8_t int32_to_str(int32_t num, char *str);
+
 void SSD1306_Driver_Init(void);
 void SSD1306_Driver_WriteChar(uint8_t line, uint8_t page, char ch);
 void SSD1306_Driver_WriteString(uint8_t line, uint8_t page, char *str,uint8_t len);
-void SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num);
-void SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num);
+uint8_t SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num);
+uint8_t SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num);
 void SSD1306_Driver_SetGRAMzero(uint8_t page);
 void SSD1306_Driver_Update(void);
 
