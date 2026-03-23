@@ -31,3 +31,12 @@ void IMU_ReadReg(uint8_t regAddr, uint8_t *pData, uint16_t len) {
                             100); // 100ms timeout
 }
 
+void IMU_ReadRegIT(uint8_t regAddr, uint8_t *pData, uint16_t len) {
+    HAL_I2C_Mem_Read_IT(&hi2c2, 
+                         (uint16_t)(IMU_ADDR_7BIT << 1), 
+                         (uint16_t)regAddr, 
+                         I2C_MEMADD_SIZE_8BIT, 
+                         pData, 
+                         len);
+}
+

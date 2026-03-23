@@ -21,7 +21,23 @@
 #ifndef __IMU_DRIVER_H__
 #define __IMU_DRIVER_H__
 
+typedef enum {
+    IMU_IDLE = 0,
+    IMU_BUSY,
+    IMU_ERROR,
+} IMU_State_t;
 
+typedef struct {
+    IMU_State_t state;
+    fp16_int32_t yaw;
+    fp16_int32_t pitch;
+    fp16_int32_t roll;
+} IMU_Handle_t;
+
+void IMU_Calibrate(void);
 void IMU_ReadAccel(float *ax,float *ay,float *az);
-fp16_int32_t IMU_GetYaw(void);
+void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll);
+void IMU_DateProcess(void);
+void IMU_ReadRegIT_Callback(void);
+
 #endif /* __IMU_DRIVER_H__ */

@@ -1,3 +1,10 @@
+/*
+ * @brief       : IMU驱动函数实现
+ * @author      : cos37
+ * @date        : 2026-3-23
+ * @version     : V1.0
+ */
+
 #include "imu_driver.h"
 #include "imu_i2c.h" /* 包含 IMU I2C 通信接口 */
 #include <stdint.h> /* 包含标准整数类型定义 */
@@ -27,15 +34,39 @@
 #define IMU_FUNC_RESET_FLASH    0xA0  // 重置Flash
 #define IMU_FUNC_REBOOT_DEVICE  0xA1  // 重启设备
 
-/*
- * @brief       : IMU驱动函数实现
- * @author      : cos37
- * @date        : 2024-06-01
- * @version     : V1.0
- */
+
+
+
+/* 状态机函数 */
+void IMU_IDLE_STAE_Func(void);
+void IMU_BUSY_STATE_Func(void);
+void IMU_ERROR_STATE_Func(void);
+
+/* 文件私有变量 */
+static uint8_t buff[12]; // 用于存储读取的欧拉角数据
+
+
+/* 工具函数  */
+static inline int32_t buff_to_q16_16(const uint8_t *p) {
+    union {
+        uint32_t u;
+        float f;
+    } conv;
+    conv.u = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | 
+             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    return (int32_t)(conv.f * 65536.0f);  // 直接转 Q16.16
+}
 
 /* ======================================================== */
 /* 函数域：IMU驱动接口实现                                       */
+
+IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 0, .pitch = 0, .roll = 0 };
+
+void IMU_Calibrate(void)
+{
+    uint8_t cmd = IMU_FUNC_CALIB_IMU;
+    IMU_WriteReg(IMU_FUNC_CALIB_IMU, &cmd, 1);
+}
 
 void IMU_ReadAccel(float *ax,float *ay,float *az)
 {
@@ -53,7 +84,7 @@ void IMU_ReadAccel(float *ax,float *ay,float *az)
     *az = *az * scale;
 }
 
-fp16_int32_t IMU_GetYaw(void)
+void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll)
 {
     uint8_t buf[12];
     float euler[3]; // 0:Roll, 1:Pitch, 2:Yaw
@@ -66,6 +97,71 @@ fp16_int32_t IMU_GetYaw(void)
     memcpy(&euler[1], &buf[4], 4);
     memcpy(&euler[2], &buf[8], 4);
 
-    return fp16_from_float(euler[2]); // 返回 Yaw
+    *yaw = fp16_from_float(euler[2]); // 返回 Yaw
+    *pitch = fp16_from_float(euler[1]); // 返回 Pitch
+    *roll = fp16_from_float(euler[0]); // 返回 Roll
+
 }
+/* ======================================================== */
+/**
+ * 状态机设计：
+ * 1. 定义状态枚举：IDLE, BUSY, ERROR
+ * 2. 在函数中根据状态执行不同逻辑
+ *   - IDLE: 正常读取数据
+ *  - BUSY: 等待或返回忙状态
+ *  - ERROR: 返回错误状态
+ * 3. 状态转换：根据函数执行结果更新状态
+ */
+
+void IMU_DateProcess(void){
+    switch (imuHandle.state) {
+        case IMU_IDLE:
+            // 正常读取数据
+            IMU_IDLE_STAE_Func();
+            break;
+        case IMU_BUSY:
+            IMU_BUSY_STATE_Func();
+            break;
+        case IMU_ERROR:
+            IMU_ERROR_STATE_Func();
+            break;
+        default:
+            break;
+    }
+
+}
+
+void IMU_IDLE_STAE_Func(void) {
+    // 读取数据
+    imuHandle.state = IMU_BUSY; // 切换到忙状态
+    IMU_ReadRegIT(IMU_FUNC_EULER, buff, 12); // 异步读取欧拉角数据
+
+}
+
+void IMU_BUSY_STATE_Func(void) {
+    // 等待或返回忙状态
+    // 这里可以添加超时机制，如果长时间没有完成，可以切换到错误状态
+    return;
+}
+
+void IMU_ERROR_STATE_Func(void) {
+    // 返回错误状态
+    // 这里可以添加错误处理逻辑，例如重置设备或记录错误日志
+    return;
+}
+
+/* 中断函数 */
+
+void IMU_ReadRegIT_Callback(void) {
+    // 处理 I2C 读取完成的中断回调
+    // 这里可以解析数据并更新状态
+
+
+    imuHandle.yaw = buff_to_q16_16(&buff[8]);
+    imuHandle.pitch = buff_to_q16_16(&buff[4]);
+    imuHandle.roll = buff_to_q16_16(&buff[0]);
+
+    imuHandle.state = IMU_IDLE; // 切换回空闲状态
+}
+
 

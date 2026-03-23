@@ -25,5 +25,6 @@
 
 void IMU_WriteReg(uint8_t regAddr, uint8_t *pData, uint16_t len);
 void IMU_ReadReg(uint8_t regAddr, uint8_t *pData, uint16_t len);
+void IMU_ReadRegIT(uint8_t regAddr, uint8_t *pData, uint16_t len);
 
 #endif /* _IMU_I2C_H */
