@@ -11,6 +11,12 @@
 #include <string.h>
 #include "fixpoint.h" /* 包含定点数类型和操作函数 */
 
+#ifdef IMU_OS_USE_FREERTOS
+#include "FreeRTOS.h"
+#include "task.h"
+extern TaskHandle_t xIMUTaskHandle; // 任务句柄，需在创建任务时赋值
+#endif
+IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 3, .pitch = 0, .roll = 0 };
 /* I2C设备地址（7位） */
 #define IMU_ADDR_7BIT           0x23
 #define IMU_ADDR_WRITE          0x46     /* 0x46 */
@@ -60,7 +66,7 @@ static inline int32_t buff_to_q16_16(const uint8_t *p) {
 /* ======================================================== */
 /* 函数域：IMU驱动接口实现                                       */
 
-IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 3, .pitch = 0, .roll = 0 };
+
 
 void IMU_Calibrate(void)
 {
@@ -107,6 +113,11 @@ void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll)
     *roll = fp16_from_float(euler[0]); // 返回 Roll
 
 }
+
+void IMU_Driver_GetEulerIT(void) {
+    // 1. 发送读取命令
+    IMU_ReadRegIT(IMU_FUNC_EULER, buff, 12); // 异步读取欧拉角数据
+}
 /* ======================================================== */
 /**
  * 状态机设计：
@@ -117,7 +128,7 @@ void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll)
  *  - ERROR: 返回错误状态
  * 3. 状态转换：根据函数执行结果更新状态
  */
-
+// #ifndef IMU_OS_USE_FREERTOS
 void IMU_DateProcess(void){
     switch (imuHandle.state) {
         case IMU_IDLE:
@@ -135,7 +146,7 @@ void IMU_DateProcess(void){
     }
 
 }
-
+// #endif
 void IMU_IDLE_STAE_Func(void) {
     // 读取数据
     imuHandle.state = IMU_BUSY; // 切换到忙状态
@@ -165,8 +176,18 @@ void IMU_ReadRegIT_Callback(void) {
     imuHandle.yaw = buff_to_q16_16(&buff[8]);
     imuHandle.pitch = buff_to_q16_16(&buff[4]);
     imuHandle.roll = buff_to_q16_16(&buff[0]);
-
+#ifdef IMU_OS_USE_FREERTOS
+    if(xIMUTaskHandle != NULL)  // 检查是否已创建
+    {
+        BaseType_t xHPW = pdFALSE;
+        vTaskNotifyGiveFromISR(xIMUTaskHandle, &xHPW);
+        portYIELD_FROM_ISR(xHPW);
+    }
+#else
+    // 裸机：什么都不做，状态已更新
+#endif
     imuHandle.state = IMU_IDLE; // 切换回空闲状态
+
 }
 
 
