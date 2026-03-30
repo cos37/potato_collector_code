@@ -35,4 +35,7 @@ typedef struct
 
 }Pid_handle_t;
 
+void MC_Init(void);
+void Mc_StateMachine(void);
+void MC_Service_Enable(fp16_int32_t target_angle, uint16_t duration_ms);
 #endif
