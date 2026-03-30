@@ -20,6 +20,7 @@
 #include "interact.h"
 #include "stm32f1xx.h"
 #include <stdint.h>
+#include <string.h>
 #include "ssd1306_driver.h"
 
 /* ================= 宏定义与配置 ================= */
@@ -77,15 +78,18 @@ Key_t keyup, keydown, keystart;  ///< 按键实例
  */
 void up_callback(void)
 {
-    if (menu_manager.menu_index < menu_manager.menu_num - 1)
+    if (menu_manager.menu_index > 1)
     {
-        menu_manager.menu_index++;
+        SSD1306_Driver_WriteChar(90,menu_manager.menu_index, ' '); // 清除上一个光标
+        menu_manager.menu_index--;
         menu_manager.current = menu_manager.current->next; // 更新当前菜单项指针
+        SSD1306_Driver_WriteChar(90,menu_manager.menu_index, '>'); // 更新光标位置
+        
     }
     else
     {
-        menu_manager.menu_index = menu_manager.menu_num - 1;
-        // 到达底部，不需要更新指针
+        menu_manager.menu_index = menu_manager.menu_index;
+        // 到达顶部，不需要更新指针
     }
 }
 
@@ -95,15 +99,18 @@ void up_callback(void)
  */
 void down_callback(void)
 {
-    if (menu_manager.menu_index > 0)
+    if (menu_manager.menu_index < menu_manager.menu_num)
     {
-        menu_manager.menu_index--;
+        SSD1306_Driver_WriteChar(90,menu_manager.menu_index, ' '); // 清除上一个光标
+        menu_manager.menu_index++;
         menu_manager.current = menu_manager.current->prve; // 更新当前菜单项指针
+        
+        SSD1306_Driver_WriteChar(90,menu_manager.menu_index, '>'); // 更新光标位置
     }
     else
     {
-        menu_manager.menu_index = 0;
-        // 到达顶部，不需要更新指针
+        menu_manager.menu_index = menu_manager.menu_index;
+        // 到达底部，不需要更新指针
     }
 }
 
@@ -127,8 +134,9 @@ void Menu_Init(void)
 {
     menu_manager.head = NULL;
     menu_manager.current = NULL;
-    menu_manager.menu_index = 0;
+    menu_manager.menu_index = 1;
     menu_manager.menu_num = 0;
+    SSD1306_Driver_WriteChar(90, menu_manager.menu_index, '>'); // 初始化光标位置
 }
 
 /**
@@ -138,6 +146,7 @@ void Menu_Init(void)
  */
 void Menu_AddItem(MenuItem_t *new_item)
 {
+    static uint8_t item_count = 0; // 静态变量记录当前菜单项数量
     if (menu_manager.head == NULL)
     {
         // 链表为空，创建首节点
@@ -145,18 +154,22 @@ void Menu_AddItem(MenuItem_t *new_item)
         menu_manager.current = new_item;
         new_item->next = new_item; // 指向自己
         new_item->prve = new_item; // 指向自己
+        
     }
     else
     {
         // 插入到尾部
         // 注意: 此处变量名 tail 与类型名冲突，但为了保持原代码逻辑未修改
-        Menu_manager_t *tail = menu_manager.head->prve; 
+        MenuItem_t *tail = menu_manager.head->prve; 
         
         tail->next = new_item;     // 原尾部 -> 新项
         new_item->prve = tail;     // 新项 -> 原尾部
         new_item->next = menu_manager.head; // 新项 -> 头部
-        // menu_manager.head 保持不变
+        menu_manager.head->prve = new_item; // 头部 -> 新项
     }
+    menu_manager.menu_num++;
+    SSD1306_Driver_WriteString(0, item_count + 1 , new_item->name,strlen(new_item->name)); // 从一开始，0留给imu数据
+    item_count++;
 }
 
 /**
@@ -235,3 +248,10 @@ void Key_State_Machine(Key_t *key)
             break;
     }
 }
+
+void Key_Update(void)
+{
+    Key_State_Machine(&keyup);
+    Key_State_Machine(&keydown);
+    Key_State_Machine(&keystart);
+}   

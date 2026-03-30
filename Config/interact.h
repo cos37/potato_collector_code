@@ -21,7 +21,7 @@ typedef struct MenuItem
 
 
 void Key_Init(void);
-void Key_State_Machine(Key_t *key);
+void Key_Update(void);
 void Menu_Init(void);
 void Menu_AddItem(MenuItem_t *new_item);
 #endif
