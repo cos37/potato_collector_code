@@ -72,6 +72,7 @@ void Move_STOP(void)
     Emm_V5_Synchronous_motion(0xFF);
 }
 
+
 void Move_Init(MoveHandle_t *hmov)
 {
     hmov->init=&Init;

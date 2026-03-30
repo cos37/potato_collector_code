@@ -42,7 +42,6 @@ void IMU_Reboot(void);
 void IMU_ReadAccel(float *ax,float *ay,float *az);
 void IMU_GetEuler(fp16_int32_t *yaw, fp16_int32_t *pitch, fp16_int32_t *roll);
 void IMU_DateProcess(void);
-void IMU_Driver_GetEulerIT(void);
 void IMU_ReadRegIT_Callback(void);
 
 #endif /* __IMU_DRIVER_H__ */
