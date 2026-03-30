@@ -41,6 +41,11 @@ void MC_Init(void)
     pidYaw.ki = fp16_from_float(0.0f);
     pidYaw.kd = fp16_from_float(0.1f);
     mc_state = MC_STATE_DISABLED;
+
+    Emm_V5_En_Control(1, SET, RESET);
+    Emm_V5_En_Control(2, SET, RESET);
+    Emm_V5_En_Control(3, SET, RESET);
+    Emm_V5_En_Control(4, SET, RESET);
 }
 
 // 角度归一化到 [-pi, pi]
@@ -57,6 +62,7 @@ void Pid_Clear_Integral(Pid_handle_t *hpid)
 {
     hpid->integral = 0;
 }
+
 
 // PID计算函数，更新error、integral、derivative等参数
 fp16_int32_t Pid_Calculate(Pid_handle_t *hpid)
@@ -201,3 +207,4 @@ void MC_Service_Enable(fp16_int32_t target_angle, uint16_t duration_ms)
     mc_duration_ms = duration_ms;
     mc_state = MC_STATE_ENABLED;
 }
+
