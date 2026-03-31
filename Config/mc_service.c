@@ -42,10 +42,11 @@ void MC_Init(void)
     pidYaw.kd = fp16_from_float(0.1f);
     mc_state = MC_STATE_DISABLED;
 
-    Emm_V5_En_Control(1, SET, RESET);
-    Emm_V5_En_Control(2, SET, RESET);
-    Emm_V5_En_Control(3, SET, RESET);
-    Emm_V5_En_Control(4, SET, RESET);
+    Emm_V5_En_Control(1, SET, SET);
+    Emm_V5_En_Control(2, SET, SET);
+    Emm_V5_En_Control(3, SET, SET);
+    Emm_V5_En_Control(4, SET, SET);
+    Emm_V5_Synchronous_motion(0xFF);
 }
 
 // 角度归一化到 [-pi, pi]
@@ -170,10 +171,10 @@ void MC_ENABLE_STATE(void)
 void MC_RUNNING_STATE(void)
 {
     Mc_Update();
-    Emm_V5_Vel_Control(1, gleft.dir, gleft.speed, 0, SET);
-    Emm_V5_Vel_Control(2, gleft.dir, gleft.speed, 0, SET);
-    Emm_V5_Vel_Control(3, gright.dir, gright.speed, 0, SET);
-    Emm_V5_Vel_Control(4, gright.dir, gright.speed, 0, SET);
+    Emm_V5_Vel_Control(1, gleft.dir, gleft.speed, 0, RESET);
+    Emm_V5_Vel_Control(2, gleft.dir, gleft.speed, 0, RESET);
+    Emm_V5_Vel_Control(3, gright.dir, gright.speed, 0, RESET);
+    Emm_V5_Vel_Control(4, gright.dir, gright.speed, 0, RESET);
     Emm_V5_Synchronous_motion(0xFF);
 }
 
