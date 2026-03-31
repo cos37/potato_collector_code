@@ -82,7 +82,7 @@ void up_callback(void)
     {
         SSD1306_Driver_WriteChar(90,menu_manager.menu_index, ' '); // 清除上一个光标
         menu_manager.menu_index--;
-        menu_manager.current = menu_manager.current->next; // 更新当前菜单项指针
+        menu_manager.current = menu_manager.current->prve; // 更新当前菜单项指针
         SSD1306_Driver_WriteChar(90,menu_manager.menu_index, '>'); // 更新光标位置
         
     }
@@ -103,7 +103,7 @@ void down_callback(void)
     {
         SSD1306_Driver_WriteChar(90,menu_manager.menu_index, ' '); // 清除上一个光标
         menu_manager.menu_index++;
-        menu_manager.current = menu_manager.current->prve; // 更新当前菜单项指针
+        menu_manager.current = menu_manager.current->next; // 更新当前菜单项指针
         
         SSD1306_Driver_WriteChar(90,menu_manager.menu_index, '>'); // 更新光标位置
     }
