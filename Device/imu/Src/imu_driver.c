@@ -10,7 +10,8 @@
 #include <stdint.h> /* 包含标准整数类型定义 */
 #include <string.h>
 #include "fixpoint.h" /* 包含定点数类型和操作函数 */
-
+#include "i2c.h" /* 包含 I2C 发送接口 */
+#include "stm32f1xx_hal.h"
 /* I2C设备地址（7位） */
 #define IMU_ADDR_7BIT           0x23
 #define IMU_ADDR_WRITE          0x46     /* 0x46 */
@@ -60,7 +61,7 @@ static inline int32_t buff_to_q16_16(const uint8_t *p) {
 /* ======================================================== */
 /* 函数域：IMU驱动接口实现                                       */
 
-IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 3, .pitch = 0, .roll = 0 };
+IMU_Handle_t imuHandle = { .state = IMU_IDLE, .yaw = 3<<16, .pitch = 0, .roll = 0 };
 
 void IMU_Calibrate(void)
 {
@@ -70,7 +71,7 @@ void IMU_Calibrate(void)
 void IMU_Reboot(void)
 {
     uint8_t cmd = IMU_FUNC_REBOOT_DEVICE;
-    IMU_WriteReg(IMU_FUNC_CALIB_IMU, &cmd, 1);
+    IMU_WriteReg(IMU_FUNC_REBOOT_DEVICE, &cmd, 1);
 }
 
 void IMU_ReadAccel(float *ax,float *ay,float *az)
@@ -138,9 +139,12 @@ void IMU_DateProcess(void){
 
 void IMU_IDLE_STAE_Func(void) {
     // 读取数据
+    
+    HAL_StatusTypeDef status = IMU_ReadRegIT(IMU_FUNC_EULER, buff, 12); // 异步读取欧拉角数据
+    if (status != HAL_OK) {
+        return; // 读取失败，保持在空闲状态
+    }
     imuHandle.state = IMU_BUSY; // 切换到忙状态
-    IMU_ReadRegIT(IMU_FUNC_EULER, buff, 12); // 异步读取欧拉角数据
-
 }
 
 void IMU_BUSY_STATE_Func(void) {
@@ -161,7 +165,6 @@ void IMU_ReadRegIT_Callback(void) {
     // 处理 I2C 读取完成的中断回调
     // 这里可以解析数据并更新状态
 
-
     imuHandle.yaw = buff_to_q16_16(&buff[8]);
     imuHandle.pitch = buff_to_q16_16(&buff[4]);
     imuHandle.roll = buff_to_q16_16(&buff[0]);
@@ -169,4 +172,11 @@ void IMU_ReadRegIT_Callback(void) {
     imuHandle.state = IMU_IDLE; // 切换回空闲状态
 }
 
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+    if (hi2c->Instance == I2C2) {
+        IMU_ReadRegIT_Callback();  // 如果用 HAL_I2C_Mem_Read_IT
+    }
+}
 

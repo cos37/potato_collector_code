@@ -21,6 +21,7 @@
 #ifndef __IMU_DRIVER_H__
 #define __IMU_DRIVER_H__
 #include "fixpoint.h"
+#include "stm32f1xx_hal.h"
 
 typedef enum {
     IMU_IDLE = 0,
@@ -30,9 +31,9 @@ typedef enum {
 
 typedef struct {
     IMU_State_t state;
-    fp16_int32_t yaw;
-    fp16_int32_t pitch;
-    fp16_int32_t roll;
+    volatile fp16_int32_t yaw;
+    volatile fp16_int32_t pitch;
+    volatile fp16_int32_t roll;
 } IMU_Handle_t;
 
 extern IMU_Handle_t imuHandle;

@@ -50,7 +50,7 @@ void Emm_V5_Stop_Now(uint8_t addr, FlagStatus snF)
 {
     uint8_t cmd[5] = {addr, 0xFE, 0x98, snF, 0x6B};
     Serial_SendArray(cmd, 5);
-
+    HAL_Delay(10);
 }
 
 /**
@@ -90,7 +90,7 @@ void Emm_V5_Pos_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc,
         raF, snF, 0x6B                    /* 模式+同步+校验 */
     };
     Serial_SendArray(cmd, 13);
-
+    HAL_Delay(10);
 }
 
 /* ======================================================== */
@@ -111,7 +111,7 @@ void Emm_V5_Modify_Ctrl_Mode(uint8_t addr, FlagStatus svF, uint8_t ctrl_mode)
 {
     uint8_t cmd[6] = {addr, 0x46, 0x69, svF, ctrl_mode, 0x6B};
     Serial_SendArray(cmd, 6);
-
+    HAL_Delay(10);
 }
 
 /**

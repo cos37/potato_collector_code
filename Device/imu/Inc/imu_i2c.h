@@ -22,9 +22,10 @@
 #define _IMU_I2C_H
 
 #include <stdint.h>
+#include "stm32f1xx_hal.h"
 
 void IMU_WriteReg(uint8_t regAddr, uint8_t *pData, uint16_t len);
 void IMU_ReadReg(uint8_t regAddr, uint8_t *pData, uint16_t len);
-void IMU_ReadRegIT(uint8_t regAddr, uint8_t *pData, uint16_t len);
+HAL_StatusTypeDef IMU_ReadRegIT(uint8_t regAddr, uint8_t *pData, uint16_t len);
 
 #endif /* _IMU_I2C_H */

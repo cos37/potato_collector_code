@@ -1,42 +1,88 @@
 #include "sys.h"
 #include "tim.h"
 #include <stdint.h>
-#include "stm32f1xx.h"
+#include "stm32f1xx_hal.h"
 
-void (*Sys_Task_TIM2)(void) = 0; // 定义一个函数指针,指向要执行的任务函数
+void (*Sys_Task_TIM2)(void) = 0;
 
-/**
- * @brief 开启定时器,一段时间后会触发中断,在中断回调函数中执行相应的任务
- * @param 时间间隔,单位为毫秒;函数指针,指向要执行的任务函数
- * @retval None
- */
+void Sys_Init(void)
+{
+    HAL_TIM_Base_Stop_IT(&htim2);
+    HAL_TIM_Base_DeInit(&htim2);
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+}
 
 void Sys_StartTimer(uint16_t interval_ms, void (*task)(void))
 {
-    //目前先只使用定时器2,后续可以扩展到其他定时器
-    //配置定时器2的时间间隔
-    uint32_t systick =HAL_RCC_GetSysClockFreq();
-    uint8_t psc= (uint8_t)(systick / 1000) - 1; // 预分频器,将时钟频率降低到1kHz
-    uint16_t arr = (uint16_t)(interval_ms); // 自动重装载值,定时器计数到这个值时触发中断
+    // 1. 停止并反初始化，确保干净状态
+    HAL_TIM_Base_Stop_IT(&htim2);
+    HAL_TIM_Base_DeInit(&htim2);
+    
+    // 2. 重新初始化时钟（DeInit会关时钟）
+    __HAL_RCC_TIM2_CLK_ENABLE();
+    
+    // 3. 计算并更新定时器参数
+    // TIM2时钟 = 72MHz (APB1=36MHz, 但TIM2有倍频器)
+    uint32_t tim_clk = 72000000;
+    uint32_t psc = (tim_clk / 1000) - 1;  // 71999, 得到1kHz
+    uint16_t arr = interval_ms - 1;        // ARR是0-based，5000ms=4999
+    
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler = psc;
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = arr;
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    
+    // 4. HAL初始化（配置PSC, ARR等，但不启动）
+    HAL_TIM_Base_Init(&htim2);
+    
+    // 5. 【关键】清NVIC pending，防止旧中断请求
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+    
+    // 6. 启动中断模式
+    HAL_TIM_Base_Start_IT(&htim2);
+    
+    Sys_Task_TIM2 = task;
+}
 
-    TIM2->PSC = psc; // 设置预分频器
-    TIM2->ARR = arr; // 设置自动重装载值
+void Sys_SoftTime_Start(void (*task)(void))
+{
+    // 1. 停止并反初始化，确保干净状态
+    HAL_TIM_Base_Stop_IT(&htim2);
+    HAL_TIM_Base_DeInit(&htim2);
 
-    //使能定时器2的更新中断
-    TIM2->DIER |= TIM_DIER_UIE;
-    //使能定时器2
-    TIM2->CR1 |= TIM_CR1_CEN;
-    //把函数指针指向全局变量,在中断回调函数中调用
+    // 2. 重新初始化时钟（DeInit会关时钟）
+    __HAL_RCC_TIM2_CLK_ENABLE();
+
+    //设置1ms时基
+    uint32_t tim_clk = 72000000;
+    uint32_t psc = (tim_clk / 1000) - 1; 
+    uint16_t arr = 1;
+
+    htim2.Instance = TIM2;
+    htim2.Init.Prescaler = psc;
+    htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim2.Init.Period = arr;
+    htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    
+    // 4. HAL初始化（配置PSC, ARR等，但不启动）
+    HAL_TIM_Base_Init(&htim2);
+    
+    // 5. 【关键】清NVIC pending，防止旧中断请求
+    NVIC_ClearPendingIRQ(TIM2_IRQn);
+    
+    // 6. 启动中断模式
+    HAL_TIM_Base_Start_IT(&htim2);
+
     Sys_Task_TIM2 = task;
 }
 
 void CloseTimer2(void)
 {
-    //禁止定时器2的更新中断
-    TIM2->DIER &= ~TIM_DIER_UIE;
-    //禁止定时器2
-    TIM2->CR1 &= ~TIM_CR1_CEN;
-    //清空函数指针
+    HAL_TIM_Base_Stop_IT(&htim2);
+    NVIC_ClearPendingIRQ(TIM2_IRQn);  // 清pending，防止残留
     Sys_Task_TIM2 = 0;
 }
 
