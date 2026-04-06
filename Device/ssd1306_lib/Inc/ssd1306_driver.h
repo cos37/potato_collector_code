@@ -3,7 +3,7 @@
 
 
 #include <stdint.h>
-
+#include "fixpoint.h"
 // typedef struct
 // {
 //     uint8_t date[128]
@@ -20,6 +20,7 @@ void SSD1306_Driver_WriteChar(uint8_t line, uint8_t page, char ch);
 void SSD1306_Driver_WriteString(uint8_t line, uint8_t page, char *str,uint8_t len);
 uint8_t SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num);
 uint8_t SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num);
+void SSD1306_Driver_WriteFP16(uint8_t line, uint8_t page, fp16_int32_t num);
 void SSD1306_Driver_SetGRAMzero(uint8_t page);
 void SSD1306_Driver_Update(void);
 

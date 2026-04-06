@@ -6,8 +6,8 @@
 #include "mecanum.h"
 
 // 积分限幅
-#define INTEGRAL_LIMIT 50000       // 0.76 rad/s 积分限幅
-#define MAX_SPEED 100000      // 1.53 rad/s ≈ 87°/s
+#define INTEGRAL_LIMIT 25000       // 0.38 rad/s 积分限幅
+#define MAX_SPEED 50000      // 0.765 rad/s ≈ 43.5°/s
 fp16_int32_t move_vel;
 fp16_int32_t pai;
 Mc_State_t mc_state;
@@ -33,10 +33,10 @@ static uint32_t abs_speed(fp16_int32_t speed)
 void MC_Init(void)
 {
     pai = fp16_from_float(3.1415926f);
-    move_vel = fp16_from_float(1.0f);  // 设定一个默认的移动速度
-    pidYaw.kp = fp16_from_float(3.0f);
+    move_vel = fp16_from_float(0.5f);  // 设定一个默认的移动速度
+    pidYaw.kp = fp16_from_float(25.5f);
     pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(1.0f);
+    pidYaw.kd = fp16_from_float(3.0f);
     Mecanum_Init();
 
     Emm_V5_En_Control(1, SET, SET);
@@ -84,6 +84,14 @@ fp16_int32_t Pid_Calculate(Pid_handle_t *hpid)
              fp16_mul(hpid->ki, hpid->integral) + 
              fp16_mul(hpid->kd, hpid->derivative);
 
+    if(output>MAX_SPEED)
+    {
+        output=MAX_SPEED;
+    }else if (output<-MAX_SPEED)
+    {
+        output=-MAX_SPEED;
+    }
+    
 
     return output;
 }
@@ -92,8 +100,10 @@ void Yaw_Control(const fp16_int32_t target_angle, const fp16_int32_t current_ang
 {
     pidYaw.target = target_angle;
     pidYaw.current = current_angle;
+    SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
+    SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
     fp16_int32_t omega = Pid_Calculate(&pidYaw);
-    Mecanum_kinematics(0,move_vel,omega);
+    Mecanum_kinematics(0,-move_vel,omega);
 }
 
 
@@ -138,7 +148,7 @@ void Mc_StateMachine(void)
 
 void MC_DISABLE_STATE(void)
 {
-
+    HAL_Delay(40);
     return;
 }
 
@@ -155,6 +165,7 @@ void MC_ENABLE_STATE(void)
     pidYaw.integral = 0;
     // 切换到运行状态
     mc_state = MC_STATE_RUNNING;
+    HAL_Delay(40);
 
 }
 volatile uint16_t speed_group_left;
@@ -175,6 +186,8 @@ void MC_END_STATE(void)
     Mecanum_kinematics(0,0,0);
     Mecanum_Update();
     mc_state = MC_STATE_DISABLED;
+
+    HAL_Delay(30);
 }
 
 void Mc_Task_IT(void)

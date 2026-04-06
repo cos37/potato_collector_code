@@ -164,14 +164,20 @@ void IMU_ERROR_STATE_Func(void) {
 void IMU_ReadRegIT_Callback(void) {
     // 处理 I2C 读取完成的中断回调
     // 这里可以解析数据并更新状态
+    float euler[3];
+    memcpy(&euler[0], &buff[0], 4);
+    memcpy(&euler[1], &buff[4], 4);
+    memcpy(&euler[2], &buff[8], 4);
+    if(euler[2]!=0.0f){
+        imuHandle.yaw = fp16_from_float(euler[2]);
+        imuHandle.pitch = fp16_from_float(euler[1]);
+        imuHandle.roll = fp16_from_float(euler[0]);
 
-    imuHandle.yaw = buff_to_q16_16(&buff[8]);
-    imuHandle.pitch = buff_to_q16_16(&buff[4]);
-    imuHandle.roll = buff_to_q16_16(&buff[0]);
+        imuHandle.state = IMU_IDLE; // 切换回空闲状态
 
-    imuHandle.state = IMU_IDLE; // 切换回空闲状态
+    }
+
 }
-
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {

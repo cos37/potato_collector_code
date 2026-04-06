@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include "i2c.h"
+#include "fixpoint.h"
 
 #define SSD1306_WINDOW_W 128
 #define SSD1306_WINDOW_H 8
@@ -46,6 +47,22 @@ uint8_t u32_to_str(uint32_t num, char *str)
     str[len] = '\0';
     
     return len;
+}
+
+static uint8_t uint_to_str(uint32_t val, char *buf) {
+    uint8_t i = 0;
+    char tmp[10];
+    
+    do {
+        tmp[i++] = '0' + (val % 10);
+        val /= 10;
+    } while (val > 0);
+    
+    // 反转
+    for (uint8_t j = 0; j < i; j++) {
+        buf[j] = tmp[i - 1 - j];
+    }
+    return i;
 }
 
 uint8_t int32_to_str(int32_t num, char *str)
@@ -169,6 +186,43 @@ uint8_t SSD1306_Driver_WriteNums(uint8_t line, uint8_t page, uint32_t num)
     uint8_t len = u32_to_str(num, str);
     SSD1306_Driver_WriteString(line, page, str, len);
     return len;
+}
+
+void SSD1306_Driver_WriteFP16(uint8_t line, uint8_t page, fp16_int32_t num) {
+    char str[16];
+    int32_t raw = num;
+    int32_t display_val = (raw * 100) >> 16;  // 保留2位小数
+    
+    uint8_t neg = (display_val < 0);
+    uint32_t abs_val = neg ? -display_val : display_val;
+    
+    uint32_t int_part = abs_val / 100;
+    uint32_t frac_part = abs_val % 100;
+    
+    uint8_t pos = 0;
+    if (neg) str[pos++] = '-';
+    
+    // 整数（至少0）
+    if (int_part == 0) {
+        str[pos++] = '0';
+    } else {
+        pos += uint_to_str(int_part, &str[pos]);
+    }
+    
+    // 小数点 + 2位小数
+    str[pos++] = '.';
+    str[pos++] = '0' + (frac_part / 10);
+    str[pos++] = '0' + (frac_part % 10);
+    
+    uint8_t new_len = pos;
+    
+    SSD1306_Driver_WriteString(
+        line,
+        page,
+        str,
+        pos
+    );
+    
 }
 
 uint8_t SSD1306_Driver_WriteIntNums(uint8_t line, uint8_t page, int32_t num)

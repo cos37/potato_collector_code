@@ -4,6 +4,11 @@
 #include "stm32f1xx_hal.h"      // 仅改这一行
 #include <stdint.h>
 
+/* 新增DMA接口 */
+void Motor_Buf_Init(void);
+void Motor_Set_Vel(uint8_t id, uint8_t dir, uint16_t vel);
+void DMA_State_Machine(void);
+
 /* 函数声明与原来完全一致 */
 void Emm_V5_En_Control(uint8_t addr, FlagStatus state, FlagStatus snF);
 void Emm_V5_Stop_Now(uint8_t addr, FlagStatus snF);

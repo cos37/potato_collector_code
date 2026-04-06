@@ -9,18 +9,146 @@
  */
 #include "Bujin.h"
 #include "usart.h" /* 包含串口发送接口 */
+#include <string.h>
+extern UART_HandleTypeDef huart1; /* 串口 1 句柄，定义在 usart.c 中 */
+
+// ========== 配置 ==========
+#define MOTOR_NUM       4
+#define FRAME_LEN       8
+
+// ========== 外部声明（用户需提供） ==========
+static uint8_t motor_buf_write[MOTOR_NUM][FRAME_LEN];   // 主循环写入
+static uint8_t motor_buf_read[MOTOR_NUM][FRAME_LEN];    // DMA读取
+static volatile uint8_t buff_new;                       // 新数据标志
 
 
-extern UART_HandleTypeDef huart1; /* 串口 2 句柄，定义在 usart.c 中 */
 
-static void Serial_SendArray(uint8_t *pData, uint16_t len)
+// ========== 状态机内部变量 ==========
+typedef enum {
+    STATE_IDLE = 0,
+    STATE_RUNNING,
+    STATE_PENDING
+} DMA_State_t;
+
+static volatile DMA_State_t dma_state = STATE_IDLE;
+static volatile uint8_t motor_idx = 0;
+static uint8_t pending_cnt = 0;
+
+// ========== 工具函数 ==========
+
+// 初始化缓冲区模板
+void Motor_Buf_Init(void)
 {
-    HAL_UART_Transmit(&huart1, pData, len, 100);
+    for (uint8_t i = 0; i < MOTOR_NUM; i++) {
+        motor_buf_write[i][0] = i + 1;      // 地址
+        motor_buf_write[i][1] = 0xF6;       // 速度模式
+        motor_buf_write[i][2] = 0;          // 方向
+        motor_buf_write[i][3] = 0;          // 速度高
+        motor_buf_write[i][4] = 0;          // 速度低
+        motor_buf_write[i][5] = 10;         // 加速度
+        motor_buf_write[i][6] = 0;          // 同步
+        motor_buf_write[i][7] = 0x6B;       // 校验
+    }
+    dma_state = STATE_IDLE;
+    motor_idx = 0;
+    buff_new = 0;
+    pending_cnt = 0;
+}
+
+// 主循环调用：写入速度（会设置buff_new）
+void Motor_Set_Vel(uint8_t id, uint8_t dir, uint16_t vel)
+{
+    if (id < 1 || id > MOTOR_NUM) return;
+    uint8_t idx = id - 1;
+    motor_buf_write[idx][2] = dir;
+    motor_buf_write[idx][3] = vel >> 8;
+    motor_buf_write[idx][4] = vel & 0xFF;
+    buff_new = 1;
+}
+
+// ========== 核心状态机（运行在定时器中断） ==========
+
+void DMA_State_Machine(void)
+{
+    switch (dma_state) {
+        
+    case STATE_IDLE:
+        if (buff_new) {
+            buff_new = 0;
+            motor_idx = 0;
+            dma_state = STATE_RUNNING;
+            pending_cnt = 0;
+            
+            // 复制到读缓冲区
+            memcpy(motor_buf_read, motor_buf_write, MOTOR_NUM * FRAME_LEN);
+            
+            // 启动第一个
+            HAL_UART_Transmit_DMA(&huart1, motor_buf_read[0], FRAME_LEN);
+        }
+        break;
+        
+    case STATE_RUNNING:
+        // 等待DMA中断链式发送，什么都不做
+        break;
+        
+    case STATE_PENDING:
+        // 容错：连续2次PENDING则强制重置
+        if (++pending_cnt > 2) {
+            HAL_UART_DMAStop(&huart1);
+            dma_state = STATE_IDLE;
+            pending_cnt = 0;
+        }
+        break;
+        
+    default:
+        dma_state = STATE_IDLE;
+        break;
+    }
+}
+
+// ========== DMA完成中断回调（链式发送） ==========
+
+static void Motor_DMA_Callback(void)
+{
+    motor_idx++;
+    
+    if (motor_idx < MOTOR_NUM) {
+        // 继续下一个
+        HAL_UART_Transmit_DMA(&huart1, motor_buf_read[motor_idx], FRAME_LEN);
+    } else {
+        // 全部完成
+        if (buff_new) {
+            // 无缝衔接新一轮
+            buff_new = 0;
+            motor_idx = 0;
+            memcpy(motor_buf_read, motor_buf_write, MOTOR_NUM * FRAME_LEN);
+            HAL_UART_Transmit_DMA(&huart1, motor_buf_read[0], FRAME_LEN);
+            // 保持RUNNING状态
+        } else {
+            dma_state = STATE_IDLE;
+        }
+    }
+}
+
+// ========== 紧急停止 ==========
+
+static void Motor_DMA_Stop(void)
+{
+    HAL_UART_DMAStop(&huart1);
+    dma_state = STATE_IDLE;
+    motor_idx = 0;
+    buff_new = 0;
+    pending_cnt = 0;
 }
 
 /* ======================================================== */
 /* 函数域：基础单轴控制                                       */
 /* ======================================================== */
+
+static void Serial_SendArray(uint8_t *pData, uint16_t len)
+{
+    HAL_UART_Transmit(&huart1, pData, len, 100);
+}
 
 /**
  * @brief  电机使能/脱机控制
@@ -66,7 +194,7 @@ void Emm_V5_Vel_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, Fl
 {
     uint8_t cmd[8] = {addr, 0xF6, dir, vel >> 8, vel, acc, snF, 0x6B};
     Serial_SendArray(cmd, 8);
-    HAL_Delay(10);
+    HAL_Delay(5);
 }
 
 /**
