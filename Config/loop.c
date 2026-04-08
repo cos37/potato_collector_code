@@ -1,6 +1,5 @@
 #include "loop.h"
 #include "ssd1306_driver.h"
-#include "imu_driver.h"
 #include "ddp.h"
 #include "fixpoint.h"
 #include "usart.h"
@@ -10,6 +9,8 @@
 #include "move.h"
 #include "sys.h"
 #include "stm32f1xx_hal.h"
+#include "imu_uart.h"
+#include "imu_driver.h"
 MoveHandle_t moveHandle ;
 
 void Toggle_LED1(void)
@@ -65,7 +66,6 @@ void setup()
 {
 	SSD1306_Driver_Init();
  	// DDP_Init(&ddpYaw);
-    IMU_Reboot();
     MC_Init();
     Menu_Init();
 	Key_Init();
@@ -75,6 +75,7 @@ void setup()
     Menu_AddItem(&item_stop); 
     Move_Init(&moveHandle);
     DWT_Init();
+    UART2_Receive_IT_Start();
     HAL_Delay(1000);
 
 }
@@ -83,7 +84,7 @@ void setup()
 void loop()
 {
 	LED_Shark();
-    IMU_DateProcess();
+    IMU_Update();
     Mc_StateMachine();
     Key_Update();
     OLED_Reflash();
@@ -103,6 +104,11 @@ void LED_Shark(void)
         tick=current_tick;
     }
 
+}
+
+void IMU_Update(void)
+{
+    imuHandle.yaw = get_yaw_fp16();
 }
 
 void OLED_Reflash(void)
