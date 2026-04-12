@@ -4,12 +4,16 @@
 #include "sys.h"
 #include "ssd1306_driver.h"
 #include "mecanum.h"
+#include "fixpoint.h"
+#include "flash.h"
 
 // 积分限幅
 #define INTEGRAL_LIMIT 25000       // 0.38 rad/s 积分限幅
 #define MAX_SPEED 50000      // 0.765 rad/s ≈ 43.5°/s
+#define DEG180 11796480  // 180度对应的定点数值，180° = π rad = 3.1415926 rad，定点数表示为 int32_t，乘以65536
 fp16_int32_t move_vel;
 fp16_int32_t pai;
+fp16_int32_t deg180 ;
 Mc_State_t mc_state;
 /**
  * 
@@ -36,7 +40,12 @@ void MC_Init(void)
     move_vel = fp16_from_float(0.5f);  // 设定一个默认的移动速度
     pidYaw.kp = fp16_from_float(2.5f);
     pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(0.5f);
+    pidYaw.kd = fp16_from_float(1.5f);
+    Flash_Read(&pidYaw.kp, &pidYaw.ki, &pidYaw.kd);
+    SSD1306_Driver_WriteFP16(0,0,pidYaw.kp);
+    SSD1306_Driver_WriteFP16(0,1,pidYaw.ki);
+    SSD1306_Driver_WriteFP16(0,2,pidYaw.kd);
+    SSD1306_Driver_WriteString(0,3,"Kp Ki Kd",8);
     Mecanum_Init();
 
     Emm_V5_En_Control(1, SET, SET);
@@ -50,13 +59,13 @@ void MC_Init(void)
 // 角度归一化到 [-pi, pi]
 void Pai_cricle(fp16_int32_t *angle)
 {
-    while (*angle>=pai)
+    while (*angle>=DEG180)
     {
-        *angle -= 2 * pai;
+        *angle -= 2 * DEG180;
     }
-    while (*angle <=-pai)
+    while (*angle <=-DEG180)
     {
-        *angle += 2 * pai; 
+        *angle += 2 * DEG180; 
     }
 }
 
@@ -103,7 +112,7 @@ void Yaw_Control(const fp16_int32_t target_angle, const fp16_int32_t current_ang
     SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
     SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
     fp16_int32_t omega = Pid_Calculate(&pidYaw);
-    Mecanum_kinematics(0,-move_vel,omega);
+    Mecanum_kinematics(0,-move_vel,-omega);
 }
 
 
@@ -148,7 +157,7 @@ void Mc_StateMachine(void)
 
 void MC_DISABLE_STATE(void)
 {
-    HAL_Delay(40);
+    // HAL_Delay(40);
     return;
 }
 
@@ -187,7 +196,7 @@ void MC_END_STATE(void)
     Mecanum_Update();
     mc_state = MC_STATE_DISABLED;
 
-    HAL_Delay(30);
+    // HAL_Delay(30);
 }
 
 void Mc_Task_IT(void)
@@ -208,7 +217,7 @@ void Mc_Soft_Task_IT(void)
     if(count>=mc_duration_ms)
     {
         count = 0 ;
-        //Mc_Task_IT();
+        Mc_Task_IT();
     }
 }
 
