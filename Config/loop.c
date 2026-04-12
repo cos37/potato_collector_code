@@ -6,12 +6,11 @@
 #include <stdint.h>
 #include "mc_service.h"
 #include "interact.h"
-#include "move.h"
 #include "sys.h"
 #include "stm32f1xx_hal.h"
 #include "imu_uart.h"
 #include "imu_driver.h"
-MoveHandle_t moveHandle ;
+
 
 void Toggle_LED1(void)
 {
@@ -73,7 +72,6 @@ void setup()
     Menu_AddItem(&item2);
     Menu_AddItem(&item_move);
     Menu_AddItem(&item_stop); 
-    Move_Init(&moveHandle);
     DWT_Init();
     UART2_Receive_IT_Start();
     HAL_Delay(1000);

@@ -155,7 +155,9 @@ uint8_t SR04_GetFlag(uint8_t dir)
     }else if(dir == 1)
     {
         return SR04Right.lost_flag;
-    }
+    }else{
+		return 0xff;
+	}
 }
 
 //dir == 0 ,return left distance
@@ -168,7 +170,11 @@ fp16_int32_t SR04_GetDistance(uint8_t dir)
     }else if(dir == 1)
     {
         return SR04Right.distance;
-    }
+    }else{
+		return 0xff;
+	}
+	
+	
 }
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)

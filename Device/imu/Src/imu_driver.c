@@ -48,15 +48,15 @@ static uint8_t buff[12]; // 用于存储读取的欧拉角数据
 
 
 /* 工具函数  */
-static inline int32_t buff_to_q16_16(const uint8_t *p) {
-    union {
-        uint32_t u;
-        float f;
-    } conv;
-    conv.u = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | 
-             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-    return (int32_t)(conv.f * 65536.0f);  // 直接转 Q16.16
-}
+//static inline int32_t buff_to_q16_16(const uint8_t *p) {
+//    union {
+//        uint32_t u;
+//        float f;
+//    } conv;
+//    conv.u = (uint32_t)p[0] | ((uint32_t)p[1] << 8) | 
+//             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+//    return (int32_t)(conv.f * 65536.0f);  // 直接转 Q16.16
+//}
 
 /* ======================================================== */
 /* 函数域：IMU驱动接口实现                                       */

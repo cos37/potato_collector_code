@@ -5,7 +5,7 @@
 #include "ssd1306_driver.h"
 #include "mecanum.h"
 #include "fixpoint.h"
-#include "flash.h"
+//#include "flash.h"
 
 // 积分限幅
 #define INTEGRAL_LIMIT 25000       // 0.38 rad/s 积分限幅
@@ -41,7 +41,6 @@ void MC_Init(void)
     pidYaw.kp = fp16_from_float(2.5f);
     pidYaw.ki = fp16_from_float(0.0f);
     pidYaw.kd = fp16_from_float(1.5f);
-    Flash_Read(&pidYaw.kp, &pidYaw.ki, &pidYaw.kd);
     SSD1306_Driver_WriteFP16(0,0,pidYaw.kp);
     SSD1306_Driver_WriteFP16(0,1,pidYaw.ki);
     SSD1306_Driver_WriteFP16(0,2,pidYaw.kd);
