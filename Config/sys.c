@@ -126,18 +126,57 @@ void CloseTimer3(void)
     Sys_Task_TIM3 = 0;
 }
 
+
+
+//使用sr04超声波模块测距，如果距离在30cm以内，误差范围可以忍受为+-1cm，我们需要us级的时基
+//使用定时器1作为时基，1us
+//初始化定时器1，作为时基
+
+volatile uint32_t us_base = 0; 
+
+void Sys_Base_us_Init(void)
+{
+    HAL_TIM_Base_Stop_IT(&htim1);
+    HAL_TIM_Base_DeInit(&htim1);
+
+    htim1.Instance = TIM1;
+    htim1.Init.Prescaler = 71;        // 72MHz / 72 = 1MHz
+    htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim1.Init.Period = 99;           // 0-99 = 100 ticks = 100μs
+    htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim1.Init.RepetitionCounter = 0;
+    htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    
+    HAL_TIM_Base_Init(&htim1);
+    
+    HAL_NVIC_SetPriority(TIM1_UP_IRQn, 2, 0);
+    HAL_NVIC_EnableIRQ(TIM1_UP_IRQn);
+    
+    HAL_TIM_Base_Start_IT(&htim1);
+}
+
+
+
+uint32_t Get_Tick_us(void)
+{
+    return us_base;
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if(htim->Instance == TIM2) {
         if(Sys_Task_TIM2 != 0) {
             Sys_Task_TIM2();
         }
-    }else if(htim->Instance == TIM2)
+    }else if(htim->Instance == TIM3)
     {
         if(Sys_Task_TIM3 != 0)
         {
             Sys_Task_TIM3();
         }
+    }else if(htim->Instance == TIM1)
+    {
+        us_base += 100;  // 每 100μs 加 100
     }
 }
 

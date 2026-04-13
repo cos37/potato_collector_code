@@ -10,4 +10,6 @@ void CloseTimer2(void);
 
 void Sys_startTimer3(uint32_t interval_ms,void (*task)(void));
 void CloseTimer3(void);
+void Sys_Base_us_Init(void);
+uint32_t Get_Tick_us(void);
 #endif
