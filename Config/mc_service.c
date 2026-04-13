@@ -1,7 +1,7 @@
 #include "mc_service.h"
 #include "bujin.h"
 #include "imu_driver.h"
-#include "sys.h"
+// #include "sys.h"
 #include "ssd1306_driver.h"
 #include "mecanum.h"
 #include "fixpoint.h"
@@ -15,6 +15,8 @@ fp16_int32_t move_vel;
 fp16_int32_t pai;
 fp16_int32_t deg180 ;
 Mc_State_t mc_state;
+uint16_t mc_duration_ms;       // 任务持续时间
+fp16_int32_t mc_target_angle;  // 目标角度
 /**
  * 
  * right 1 , 2,
@@ -29,6 +31,15 @@ Pid_handle_t pidYaw = {
 };
 
 
+void (*MC_RUNNING_FUNCTION)(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void MC_DISABLE_FUNC(void);
+void MC_ENABLE_FUNC(void);
+void MC_RUNNING_FUNC(void);
+void MC_END_FUNC(void);
+void MC_RUNNING_CHANGE_FUNC(void);
+void Mc_Task_IT(void);
+void Mc_Soft_Task_IT(void);
+
 static uint32_t abs_speed(fp16_int32_t speed)
 {
     return (speed >= 0) ? speed : -speed;
@@ -41,10 +52,7 @@ void MC_Init(void)
     pidYaw.kp = fp16_from_float(2.5f);
     pidYaw.ki = fp16_from_float(0.0f);
     pidYaw.kd = fp16_from_float(1.5f);
-    SSD1306_Driver_WriteFP16(0,0,pidYaw.kp);
-    SSD1306_Driver_WriteFP16(0,1,pidYaw.ki);
-    SSD1306_Driver_WriteFP16(0,2,pidYaw.kd);
-    SSD1306_Driver_WriteString(0,3,"Kp Ki Kd",8);
+
     Mecanum_Init();
 
     Emm_V5_En_Control(1, SET, SET);
@@ -53,6 +61,7 @@ void MC_Init(void)
     Emm_V5_En_Control(4, SET, SET);
     Emm_V5_Synchronous_motion(0xFF);
     mc_state = MC_STATE_DISABLED;
+    MC_RUNNING_FUNCTION = Move_Y_NEGATIVE;
 }
 
 // 角度归一化到 [-pi, pi]
@@ -103,16 +112,80 @@ fp16_int32_t Pid_Calculate(Pid_handle_t *hpid)
 
     return output;
 }
-
-void Yaw_Control(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
+/**
+ * RUNNING STATE FUNCTION STATRT
+ */
+void Move_Y_POSITIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
 {
     pidYaw.target = target_angle;
     pidYaw.current = current_angle;
-    SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
-    SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
+    // SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
+    // SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
+    fp16_int32_t omega = Pid_Calculate(&pidYaw);
+    Mecanum_kinematics(0,move_vel,-omega);
+}
+
+void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
+{
+    pidYaw.target = target_angle;
+    pidYaw.current = current_angle;
+    // SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
+    // SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
     fp16_int32_t omega = Pid_Calculate(&pidYaw);
     Mecanum_kinematics(0,-move_vel,-omega);
 }
+
+void Move_X_Positive(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
+{
+    pidYaw.target = target_angle;
+    pidYaw.current = current_angle; 
+    fp16_int32_t omega = Pid_Calculate(&pidYaw);
+    Mecanum_kinematics(move_vel,0,-omega);
+}
+
+void Move_X_Negative(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
+{
+    pidYaw.target = target_angle;
+    pidYaw.current = current_angle; 
+    fp16_int32_t omega = Pid_Calculate(&pidYaw);
+    Mecanum_kinematics(-move_vel,0,-omega);
+}
+
+/**
+ * RUNNING STATE FUNCTION END
+ */
+
+ /**
+  * STATE FUNC CHANGE FUNC START
+  */
+
+
+
+ void MC2XP(void)
+ {
+    MC_RUNNING_FUNCTION = Move_X_Positive;
+ }
+
+ void MC2XN(void)
+ {
+    MC_RUNNING_FUNCTION = Move_X_Negative;
+ }
+
+ void MC2YP(void)
+ {
+    MC_RUNNING_FUNCTION = Move_Y_POSITIVE;
+ }
+
+ void MC2YN(void)
+ {
+    MC_RUNNING_FUNCTION = Move_Y_NEGATIVE;
+ }
+
+
+ /**
+  * STATE FUNC CHANGE FUNC END
+  */
+
 
 
 
@@ -124,48 +197,43 @@ void Yaw_Control(const fp16_int32_t target_angle, const fp16_int32_t current_ang
 //      : RUNNING 任务进行中,持续更新PID控制
 //      : END 任务结束,停止电机
 
-void MC_DISABLE_STATE(void);
-void MC_ENABLE_STATE(void);
-void MC_RUNNING_STATE(void);
-void MC_END_STATE(void);
-void Mc_Task_IT(void);
-void Mc_Soft_Task_IT(void);
 
-uint16_t mc_duration_ms;       // 任务持续时间
-fp16_int32_t mc_target_angle;  // 目标角度
+
+
 
 void Mc_StateMachine(void)
 {
     switch (mc_state) {
         case MC_STATE_DISABLED:
-            MC_DISABLE_STATE();
+            MC_DISABLE_FUNC();
             break;
         case MC_STATE_ENABLED:
-            MC_ENABLE_STATE();
+            MC_ENABLE_FUNC();
             break;
         case MC_STATE_RUNNING:
-            MC_RUNNING_STATE();
+            MC_RUNNING_FUNC();
             break;
         case MC_STATE_END:
-            MC_END_STATE();
+            MC_END_FUNC();
+            break;
+        case MC_STATE_RUNNING_CHANGE:
+            MC_RUNNING_CHANGE_FUNC();
             break;
         default:
             break;
     }
 }
 
-void MC_DISABLE_STATE(void)
+void MC_DISABLE_FUNC(void)
 {
     // HAL_Delay(40);
     return;
 }
 
-void MC_ENABLE_STATE(void)
+void MC_ENABLE_FUNC(void)
 {
     // 设定目标角度和持续时间
     pidYaw.target = mc_target_angle;
-    // 设置持续时间
-    Sys_SoftTime_Start(Mc_Soft_Task_IT);
     pidYaw.current = 0;
     pidYaw.derivative = 0;
     pidYaw.error = 0;
@@ -173,18 +241,18 @@ void MC_ENABLE_STATE(void)
     pidYaw.integral = 0;
     // 切换到运行状态
     mc_state = MC_STATE_RUNNING;
-    HAL_Delay(40);
+
 
 }
 volatile uint16_t speed_group_left;
 volatile uint16_t speed_group_right;
-void MC_RUNNING_STATE(void)
+void MC_RUNNING_FUNC(void)
 {
-    Yaw_Control(mc_target_angle,imuHandle.yaw);
+    Move_Y_NEGATIVE(mc_target_angle,imuHandle.yaw);
     Mecanum_Update();
 }
 
-void MC_END_STATE(void)
+void MC_END_FUNC(void)
 {
     pidYaw.integral =  0;
     pidYaw.derivative = 0;
@@ -195,30 +263,33 @@ void MC_END_STATE(void)
     Mecanum_Update();
     mc_state = MC_STATE_DISABLED;
 
-    // HAL_Delay(30);
-}
 
-void Mc_Task_IT(void)
-{
-    // 关闭定时器
-    CloseTimer2();
-    // 切换到结束状态
-    mc_state = MC_STATE_END;
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // 任务结束，点亮LED
 }
 
 
 
-void Mc_Soft_Task_IT(void)
-{
-    static uint32_t count = 0;
-    count++;
-    if(count>=mc_duration_ms)
-    {
-        count = 0 ;
-        Mc_Task_IT();
-    }
-}
+
+// void Mc_Task_IT(void)
+// {
+//     // 关闭定时器
+//     CloseTimer2();
+//     // 切换到结束状态
+//     mc_state = MC_STATE_END;
+//     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // 任务结束，点亮LED
+// }
+
+
+
+// void Mc_Soft_Task_IT(void)
+// {
+//     static uint32_t count = 0;
+//     count++;
+//     if(count>=mc_duration_ms)
+//     {
+//         count = 0 ;
+//         Mc_Task_IT();
+//     }
+// }
 
 // 接口函数
 void MC_Service_Enable(fp16_int32_t target_angle, uint32_t duration_ms)
