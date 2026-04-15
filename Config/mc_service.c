@@ -1,7 +1,7 @@
 #include "mc_service.h"
 #include "bujin.h"
 #include "imu_driver.h"
-// #include "sys.h"
+#include "sys.h"
 #include "ssd1306_driver.h"
 #include "mecanum.h"
 #include "fixpoint.h"
@@ -32,18 +32,24 @@ Pid_handle_t pidYaw = {
 
 
 void (*MC_RUNNING_FUNCTION)(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void Move_Y_POSITIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void Move_X_Positive(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void Move_X_Negative(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
 void MC_DISABLE_FUNC(void);
 void MC_ENABLE_FUNC(void);
 void MC_RUNNING_FUNC(void);
 void MC_END_FUNC(void);
-void MC_RUNNING_CHANGE_FUNC(void);
 void Mc_Task_IT(void);
 void Mc_Soft_Task_IT(void);
 
-static uint32_t abs_speed(fp16_int32_t speed)
-{
-    return (speed >= 0) ? speed : -speed;
-}
+
+
+
+// static uint32_t abs_speed(fp16_int32_t speed)
+// {
+//     return (speed >= 0) ? speed : -speed;
+// }
 
 void MC_Init(void)
 {
@@ -51,7 +57,7 @@ void MC_Init(void)
     move_vel = fp16_from_float(0.5f);  // 设定一个默认的移动速度
     pidYaw.kp = fp16_from_float(2.5f);
     pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(1.5f);
+    pidYaw.kd = fp16_from_float(3.5f);
 
     Mecanum_Init();
 
@@ -112,6 +118,7 @@ fp16_int32_t Pid_Calculate(Pid_handle_t *hpid)
 
     return output;
 }
+
 /**
  * RUNNING STATE FUNCTION STATRT
  */
@@ -216,9 +223,6 @@ void Mc_StateMachine(void)
         case MC_STATE_END:
             MC_END_FUNC();
             break;
-        case MC_STATE_RUNNING_CHANGE:
-            MC_RUNNING_CHANGE_FUNC();
-            break;
         default:
             break;
     }
@@ -241,6 +245,7 @@ void MC_ENABLE_FUNC(void)
     pidYaw.integral = 0;
     // 切换到运行状态
     mc_state = MC_STATE_RUNNING;
+    Sys_SoftTime_Start(Mc_Soft_Task_IT);
 
 
 }
@@ -269,33 +274,52 @@ void MC_END_FUNC(void)
 
 
 
-// void Mc_Task_IT(void)
-// {
-//     // 关闭定时器
-//     CloseTimer2();
-//     // 切换到结束状态
-//     mc_state = MC_STATE_END;
-//     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // 任务结束，点亮LED
-// }
+void Mc_Task_IT(void)
+{
+    // 关闭定时器
+    CloseTimer2();
+    // 切换到结束状态
+    mc_state = MC_STATE_END;
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // 任务结束，点亮LED
+}
 
 
 
-// void Mc_Soft_Task_IT(void)
-// {
-//     static uint32_t count = 0;
-//     count++;
-//     if(count>=mc_duration_ms)
-//     {
-//         count = 0 ;
-//         Mc_Task_IT();
-//     }
-// }
+void Mc_Soft_Task_IT(void)
+{
+    static uint32_t count = 0;
+    count++;
+    if(count>=mc_duration_ms)
+    {
+        count = 0 ;
+        Mc_Task_IT();
+    }
+}
 
 // 接口函数
-void MC_Service_Enable(fp16_int32_t target_angle, uint32_t duration_ms)
+void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,fp16_int32_t destinantion)
 {
     mc_target_angle = target_angle;
-    mc_duration_ms = duration_ms;
+    //计算运行的时间
+    fp16_int32_t time = fp16_div(destinantion,move_vel)*1000;
+    mc_duration_ms = time>>16;
+    //根据dir换方向
+    if(dir == Move_X_Positive)
+    {
+        MC2XP();
+    }else if (dir == Move_X_Negative)
+    {
+        MC2XN();
+    }else if (dir == Move_Y_POSITIVE)
+    {
+        MC2YP();
+    }else if (dir == Move_Y_NEGATIVE)
+    {
+        MC2YN();
+    }
+    
+    
+    
     mc_state = MC_STATE_ENABLED;
 }
 

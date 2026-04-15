@@ -8,7 +8,6 @@ typedef enum
     MC_STATE_DISABLED,
     MC_STATE_ENABLED,
     MC_STATE_RUNNING,
-    MC_STATE_RUNNING_CHANGE,
     MC_STATE_END
 
 } Mc_State_t;
@@ -48,7 +47,7 @@ typedef struct
 
 void MC_Init(void);
 void Mc_StateMachine(void);
-void MC_Service_Enable(fp16_int32_t target_angle, uint32_t duration_ms);
+void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,fp16_int32_t destinantion)
 void MC_Service_Disable(void);
 void MC2XP(void);
 void MC2XN(void);
