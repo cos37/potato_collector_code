@@ -17,6 +17,7 @@ fp16_int32_t deg180 ;
 Mc_State_t mc_state;
 uint16_t mc_duration_ms;       // 任务持续时间
 fp16_int32_t mc_target_angle;  // 目标角度
+uint8_t compelate_flag = 0;
 /**
  * 
  * right 1 , 2,
@@ -280,7 +281,8 @@ void Mc_Task_IT(void)
     CloseTimer2();
     // 切换到结束状态
     mc_state = MC_STATE_END;
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_15, GPIO_PIN_SET); // 任务结束，点亮LED
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_15); // 任务结束，点亮LED
+
 }
 
 
@@ -293,7 +295,13 @@ void Mc_Soft_Task_IT(void)
     {
         count = 0 ;
         Mc_Task_IT();
+        compelate_flag = 1;
     }
+}
+
+uint8_t GetComplate_flag(void)
+{
+    return compelate_flag;
 }
 
 // 接口函数
@@ -319,7 +327,7 @@ void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,fp16_int32_
     }
     
     
-    
+    compelate_flag = 0 ;
     mc_state = MC_STATE_ENABLED;
 }
 
@@ -327,5 +335,6 @@ void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,fp16_int32_
 void MC_Service_Disable(void)
 {
     mc_state = MC_STATE_END;
+    compelate_flag = 1;
 }
 

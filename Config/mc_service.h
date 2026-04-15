@@ -53,4 +53,5 @@ void MC2XP(void);
 void MC2XN(void);
 void MC2YP(void);
 void MC2YN(void);
+uint8_t GetComplate_flag(void);
 #endif
