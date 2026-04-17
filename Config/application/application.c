@@ -48,7 +48,7 @@ void Application_Loop(void)
         APPLICATION_MOVETONEXT_FUNC();//移动到下一部分
         break;
 		case APPLICATION_STATE_KUALONG2:
-        APPLICATION_KUALONG1_FUNC();//胯隆部分2
+        APPLICATION_KUALONG2_FUNC();//胯隆部分2
         break;
     case APPLICATION_STATE_CAMEBACK:
         APPLICATION_CAMEBACK_FUNC();
@@ -78,7 +78,8 @@ void APPLICATION_ENTRY_FUNC(void)
     if(Entrystate == 0 ) //启动状态
     {
         
-        MC_Service_Enable(imuHandle.yaw,MOVE_X_NEGATIVE,ENTRY_XN_TIME);
+        MC_Service_Enable(imuHandle.yaw,MOVE_X_POSITIVE,ENTRY_XN_TIME);
+        Mechanism_Motor5_Control(0, 30);
         Entrystate = 1 ; //更改状态
 
     }else if (Entrystate == 1) //
@@ -106,7 +107,7 @@ void APPLICATION_ENTRY_FUNC(void)
  * @brief 胯隆部分的状态机函数
  */
 
-#define TIME_LONG 50000 //5s
+#define TIME_LONG 30000 //5s
 
 void APPLICATION_KUALONG1_FUNC(void)
 {
@@ -145,7 +146,7 @@ void APPLICATION_KUALONG1_FUNC(void)
  * @brief 移动到下一个状态
  */
 
-#define TIME_MOVETONEXT 500 
+#define TIME_MOVETONEXT 10000 
 
 void APPLICATION_MOVETONEXT_FUNC(void)
 {
@@ -177,7 +178,7 @@ void APPLICATION_MOVETONEXT_FUNC(void)
             MC_Service_Disable(); // 彻底锁死电机
             MoveNextState = 0;    // 自己内部的状态机归零，方便下次再次调用
             
-            ast = APPLICATION_STATE_CAMEBACK; 
+            ast = APPLICATION_STATE_KUALONG2; 
         }
     }
 }
