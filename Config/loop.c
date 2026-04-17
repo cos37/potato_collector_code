@@ -11,7 +11,7 @@
 #include "imu_uart.h"
 #include "imu_driver.h"
 #include "application.h"
-//#include "hc-sr04.h"
+#include "hc-sr04.h"
 
 
 void Toggle_LED1(void)
