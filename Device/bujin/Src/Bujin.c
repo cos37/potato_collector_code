@@ -194,7 +194,7 @@ void Emm_V5_Vel_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, Fl
 {
     uint8_t cmd[8] = {addr, 0xF6, dir, vel >> 8, vel, acc, snF, 0x6B};
     Serial_SendArray(cmd, 8);
-    HAL_Delay(5);
+    HAL_Delay(10);
 }
 
 /**

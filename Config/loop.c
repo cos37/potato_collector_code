@@ -10,6 +10,8 @@
 #include "stm32f1xx_hal.h"
 #include "imu_uart.h"
 #include "imu_driver.h"
+#include "application.h"
+//#include "hc-sr04.h"
 
 
 void Toggle_LED1(void)
@@ -24,13 +26,14 @@ void Toggle_LED2(void)
 
 void Move_req(void)
 {
-    MC_Service_Enable(imuHandle.yaw,100000);
+    APP_ENABLE();
 }
 
 void Move_stop(void)
 {
     MC_Service_Disable();
 }
+
 MenuItem_t item1 = {.name = "TLED1", .task = Toggle_LED1};
 MenuItem_t item2 = {.name = "TLED2", .task = Toggle_LED2};
 MenuItem_t item_move = {.name = "MOVE", .task = Move_req};
@@ -74,6 +77,8 @@ void setup()
     Menu_AddItem(&item_stop); 
     DWT_Init();
     UART2_Receive_IT_Start();
+//    SR04_Init();
+    Sys_Base_us_Init();
     HAL_Delay(1000);
 
 }
@@ -82,8 +87,10 @@ void setup()
 void loop()
 {
 	LED_Shark();
+//    SR04_LOOP();
     IMU_Update();
     Mc_StateMachine();
+    Application_Loop();
     Key_Update();
     OLED_Reflash();
 }
@@ -120,7 +127,9 @@ void OLED_Reflash(void)
         tick=current_tick;
 		
 		// DDP_Update(&ddpYaw); 
-        SSD1306_Driver_WriteFP16(20, 0, imuHandle.yaw);
+        
+        // SSD1306_Driver_WriteFP16(20, 7, SR04_GetDistance(0));
+        SSD1306_Driver_WriteIntNums(20,7,HAL_GetTick());
         SSD1306_Driver_Update();
     }
 }

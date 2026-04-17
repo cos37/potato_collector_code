@@ -8,12 +8,13 @@
 //#include "flash.h"
 
 // 积分限幅
-#define INTEGRAL_LIMIT 25000       // 0.38 rad/s 积分限幅
-#define MAX_SPEED 50000      // 0.765 rad/s ≈ 43.5°/s
+#define INTEGRAL_LIMIT 50000       // 0.38 rad/s 积分限幅
+#define MAX_SPEED 100000      // 0.765 rad/s ≈ 43.5°/s
 #define DEG180 11796480  // 180度对应的定点数值，180° = π rad = 3.1415926 rad，定点数表示为 int32_t，乘以65536
 fp16_int32_t move_vel;
 fp16_int32_t pai;
 fp16_int32_t deg180 ;
+fp16_int32_t diff ;
 Mc_State_t mc_state;
 uint16_t mc_duration_ms;       // 任务持续时间
 fp16_int32_t mc_target_angle;  // 目标角度
@@ -55,11 +56,11 @@ void Mc_Soft_Task_IT(void);
 void MC_Init(void)
 {
     pai = fp16_from_float(3.1415926f);
-    move_vel = fp16_from_float(0.5f);  // 设定一个默认的移动速度
+    move_vel = fp16_from_float(1.0f);  // 设定一个默认的移动速度
     pidYaw.kp = fp16_from_float(2.5f);
     pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(3.5f);
-
+    pidYaw.kd = fp16_from_float(5.5f);
+		diff = fp16_from_float(0.08);
     Mecanum_Init();
 
     Emm_V5_En_Control(1, SET, SET);
@@ -68,7 +69,7 @@ void MC_Init(void)
     Emm_V5_En_Control(4, SET, SET);
     Emm_V5_Synchronous_motion(0xFF);
     mc_state = MC_STATE_DISABLED;
-    MC_RUNNING_FUNCTION = Move_Y_NEGATIVE;
+    MC_RUNNING_FUNCTION = Move_X_Negative;
 }
 
 // 角度归一化到 [-pi, pi]
@@ -140,7 +141,7 @@ void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current
     // SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
     // SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
     fp16_int32_t omega = Pid_Calculate(&pidYaw);
-    Mecanum_kinematics(0,-move_vel,-omega);
+    Mecanum_kinematics(diff,-move_vel,-omega);
 }
 
 void Move_X_Positive(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
@@ -254,7 +255,7 @@ volatile uint16_t speed_group_left;
 volatile uint16_t speed_group_right;
 void MC_RUNNING_FUNC(void)
 {
-    Move_Y_NEGATIVE(mc_target_angle,imuHandle.yaw);
+    MC_RUNNING_FUNCTION(mc_target_angle, imuHandle.yaw);
     Mecanum_Update();
 }
 
@@ -305,23 +306,23 @@ uint8_t GetComplate_flag(void)
 }
 
 // 接口函数
-void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,fp16_int32_t destinantion)
+void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,uint16_t time)
 {
     mc_target_angle = target_angle;
     //计算运行的时间
-    fp16_int32_t time = fp16_div(destinantion,move_vel)*1000;
-    mc_duration_ms = time>>16;
+
+    mc_duration_ms = time;
     //根据dir换方向
-    if(dir == Move_X_Positive)
+    if(dir == MOVE_X_POSITIVE)
     {
         MC2XP();
-    }else if (dir == Move_X_Negative)
+    }else if (dir == MOVE_X_NEGATIVE)
     {
         MC2XN();
-    }else if (dir == Move_Y_POSITIVE)
+    }else if (dir == MOVE_Y_POSITIVE)
     {
         MC2YP();
-    }else if (dir == Move_Y_NEGATIVE)
+    }else if (dir == MOVE_Y_NEGATIVE)
     {
         MC2YN();
     }
@@ -337,4 +338,3 @@ void MC_Service_Disable(void)
     mc_state = MC_STATE_END;
     compelate_flag = 1;
 }
-
