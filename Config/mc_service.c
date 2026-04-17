@@ -57,9 +57,9 @@ void MC_Init(void)
 {
     pai = fp16_from_float(3.1415926f);
     move_vel = fp16_from_float(1.0f);  // 设定一个默认的移动速度
-    pidYaw.kp = fp16_from_float(2.5f);
+    pidYaw.kp = fp16_from_float(0.8f);
     pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(5.5f);
+    pidYaw.kd = fp16_from_float(0.0f);
 		diff = fp16_from_float(0.08);
     Mecanum_Init();
 

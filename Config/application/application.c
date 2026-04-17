@@ -131,8 +131,39 @@ void APPLICATION_KUALONG_FUNC(void)
  */
 void APPLICATION_MOVETONEXT_FUNC(void)
 {
+    static uint8_t MoveNextState = 0;
+    static uint32_t start = 0;
 
+    if (MoveNextState == 0) // 第0步：启动状态
+    {
+        // 告诉底层：保持当前车头角度，向右平移，运行 500ms
+        MC_Service_Enable(imuHandle.yaw, MOVE_X_POSITIVE, 10000);
+        MoveNextState = 1; // 指令下达完毕，切到监工状态
+        
+    }
+    else if (MoveNextState == 1) // 第1步：监工等待
+    {
+        // 观察底层是否跑完了这 0.5 秒
+        if (GetComplate_flag() == 1)
+        {
+            MoveNextState = 2; // 跑完了，准备进入缓冲休息
+            start = Get_ms();  // 掐下秒表，记录停下来的瞬间
+        }
+        
+    }
+    else if (MoveNextState == 2) // 第2步：缓冲休息与交接
+    {
+        // 给小车 0.5s 的时间让车身晃动平息下来（极大地提高下一步的精度）
+        if (Get_ms() - start >= 500) 
+        {
+            MC_Service_Disable(); // 彻底锁死电机
+            MoveNextState = 0;    // 自己内部的状态机归零，方便下次再次调用
+            
+            ast = APPLICATION_STATE_CAMEBACK; 
+        }
+    }
 }
+
 
 /**
  * @brief 返回状态机
