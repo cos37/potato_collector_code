@@ -68,7 +68,7 @@ void SR04_IDLE_FUNC(SR04_t* s)
 void SR04_WAITING_FUNC(SR04_t* s)
 {
     s->time = Get_Tick_us();
-    if(s->time-s->start_time>=50)//草死了
+    if(s->time-s->start_time>=30000)//超时了
     {
         s->state = SR04_STATE_IDLE;
     }
