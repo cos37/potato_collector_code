@@ -55,7 +55,7 @@ void Mecanum_Init(void)
     mecaunm.R = fp16_from_float(0.125);
     mecaunm.W = fp16_from_float(0.039);
 
-    Motor_Buf_Init();
+    // Motor_Buf_Init();
 
 }
 
@@ -116,8 +116,8 @@ void Mecanum_Update(void)
 
 }
 
-void Mecanum_DMA_Mode_Enable(void)
-{
-    Sys_startTimer3(20,DMA_State_Machine);
-}
+// void Mecanum_DMA_Mode_Enable(void)
+// {
+//     Sys_startTimer3(20,DMA_State_Machine);
+// }
 

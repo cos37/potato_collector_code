@@ -1,12 +1,12 @@
 #include "mc_service.h"
-#include "bujin.h"
+#include "Bujin.h"
 #include "imu_driver.h"
 #include "sys.h"
 #include "ssd1306_driver.h"
 #include "mecanum.h"
 #include "fixpoint.h"
 //#include "flash.h"
-
+#define USE_CAN1
 // 积分限幅
 #define INTEGRAL_LIMIT 50000       // 0.38 rad/s 积分限幅
 #define MAX_SPEED 100000      // 0.765 rad/s ≈ 43.5°/s
@@ -55,18 +55,20 @@ void Mc_Soft_Task_IT(void);
 
 void MC_Init(void)
 {
+    CAN1_Init();
     pai = fp16_from_float(3.1415926f);
     move_vel = fp16_from_float(1.0f);  // 设定一个默认的移动速度
     pidYaw.kp = fp16_from_float(0.8f);
     pidYaw.ki = fp16_from_float(0.0f);
     pidYaw.kd = fp16_from_float(0.0f);
-		diff = fp16_from_float(0.08);
+	diff = fp16_from_float(0.08);
     Mecanum_Init();
-
+    
     Emm_V5_En_Control(1, SET, SET);
     Emm_V5_En_Control(2, SET, SET);
     Emm_V5_En_Control(3, SET, SET);
     Emm_V5_En_Control(4, SET, SET);
+	Emm_V5_En_Control(5,SET,SET);
     Emm_V5_Synchronous_motion(0xFF);
     mc_state = MC_STATE_DISABLED;
     MC_RUNNING_FUNCTION = Move_X_Negative;
