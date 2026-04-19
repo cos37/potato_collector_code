@@ -3,209 +3,235 @@
 #include "fixpoint.h"
 #include "sys.h"
 
-// 340m/s,340*dt/2
 #define DISTANCE_SCLAR 1114  
-#define GPIO_PIN_TRIG_LEFT GPIO_PIN_4
+#define GPIO_PIN_TRIG_LEFT  GPIO_PIN_4
 #define GPIO_PIN_TRIG_RIGHT GPIO_PIN_5
-#define GPIO_TRIG_Port GPIOB
+#define GPIO_TRIG_Port      GPIOB
 
-typedef enum{
-    SR04_STATE_IDLE = 0,
+#define FILTER_WINDOW_SIZE 5  
+
+typedef enum {
+    SR04_STATE_IDLE    = 0,
     SR04_STATE_WAITING = 1,
-    SR04_STATE_DONE = 2,
-    SR04_STATE_LOST = 3
+    SR04_STATE_DONE    = 2,
+    SR04_STATE_LOST    = 3
 } SR04State_t;
 
-typedef struct 
-{
-    SR04State_t state;
+typedef struct {
+    volatile SR04State_t state;        
     fp16_int32_t distance;
     uint8_t lost_flag;
-    void(*TRIG)(void);
-    uint32_t start_time;
-    uint32_t time;
-    uint32_t end_time;
+    volatile uint8_t echo_started;     
+    void (*TRIG)(void);
+    volatile uint32_t start_time;      
+    volatile uint32_t end_time;        
+    
+    fp16_int32_t history[FILTER_WINDOW_SIZE]; 
+    uint8_t history_idx;                      
+    uint8_t history_count;                    
 } SR04_t;
 
 SR04_t SR04Left;
 SR04_t SR04Right;
 
-void SR04_IDLE_FUNC(SR04_t* s);
-void SR04_WAITING_FUNC(SR04_t* s);
-void SR04_DONE_FUNC(SR04_t* s);
-void SR04_LOST_FUNC(SR04_t* s);
-
-// 【关键修改1】增加微秒级死延时函数，专供 TRIG 触发使用
-static void Delay_us(uint32_t us)
-{
+static inline void Delay_us(uint32_t us) {
     uint32_t start = Get_Tick_us();
     while ((Get_Tick_us() - start) < us);
 }
 
-void SR04State_Machine(SR04_t* s)
-{
-    switch (s->state)
-    {
-    case SR04_STATE_IDLE:
-        SR04_IDLE_FUNC(s);
-        break;
-    case SR04_STATE_WAITING:
-        SR04_WAITING_FUNC(s);
-        break;
-    case SR04_STATE_DONE:
-        SR04_DONE_FUNC(s);
-        break;
-    case SR04_STATE_LOST:
-        SR04_LOST_FUNC(s);
-        break;
-    default:
-        break;
+// ================= 滤波算法 =================
+static fp16_int32_t SR04_MedianFilter(SR04_t* s, fp16_int32_t new_distance) {
+    s->history[s->history_idx] = new_distance;
+    s->history_idx++;
+    if (s->history_idx >= FILTER_WINDOW_SIZE) {
+        s->history_idx = 0; 
+    }
+    
+    if (s->history_count < FILTER_WINDOW_SIZE) {
+        s->history_count++;
+    }
+
+    fp16_int32_t temp_buf[FILTER_WINDOW_SIZE];
+    for (uint8_t i = 0; i < s->history_count; i++) {
+        temp_buf[i] = s->history[i];
+    }
+
+    if (s->history_count > 1) {
+        for (uint8_t i = 0; i < s->history_count - 1; i++) {
+            for (uint8_t j = i + 1; j < s->history_count; j++) {
+                if (temp_buf[i] > temp_buf[j]) {
+                    fp16_int32_t t = temp_buf[i];
+                    temp_buf[i] = temp_buf[j];
+                    temp_buf[j] = t;
+                }
+            }
+        }
+    }
+
+    return temp_buf[s->history_count / 2];
+}
+
+// ================= 状态机内部处理 =================
+void SR04_IDLE_FUNC(SR04_t* s) {
+}
+
+void SR04_WAITING_FUNC(SR04_t* s) {
+    if ((Get_Tick_us() - s->start_time) >= 38000) { 
+        s->state = SR04_STATE_LOST; 
     }
 }
 
-void SR04_IDLE_FUNC(SR04_t* s)
-{
-    // 防止两个超声波一进入 IDLE 就同时发波导致打架。
-}
-
-void SR04_WAITING_FUNC(SR04_t* s)
-{
-    s->time = Get_Tick_us();
-    if(s->time - s->start_time >= 38000) // 38ms 超时 (约6.5米外或丢波了)
-    {
-        s->lost_flag = 1;         
-        s->state = SR04_STATE_IDLE; // 复位，准备下一次测量
+void SR04_DONE_FUNC(SR04_t* s) {
+    uint32_t time_diff = s->end_time - s->start_time;
+    
+    // 物理常识过滤：如果时间差大于 40ms 或为 0，视为异常数据丢弃
+    if (time_diff > 40000 || time_diff == 0) {
+        s->state = SR04_STATE_LOST;
+        return;
     }
-}
 
-void SR04_DONE_FUNC(SR04_t* s)
-{
-    // 距离 = 时间差 * 比例系数
-    s->distance = fp16_mul((s->end_time - s->start_time) << 16, DISTANCE_SCLAR);
-    s->lost_flag = 0; // 成功测到，清除丢波标志
+    fp16_int32_t raw_distance = fp16_mul(time_diff << 16, DISTANCE_SCLAR);
+    fp16_int32_t median_distance = SR04_MedianFilter(s, raw_distance);
+
+    if (s->distance == 0 || s->lost_flag == 1) {
+        s->distance = median_distance;
+    } else {
+        s->distance = s->distance - (s->distance >> 2) + (median_distance >> 2);
+    }
+
+    s->lost_flag = 0; 
+    s->echo_started = 0;
     s->state = SR04_STATE_IDLE;
 }
 
-void SR04_LOST_FUNC(SR04_t* s)
-{
+void SR04_LOST_FUNC(SR04_t* s) {
     s->lost_flag = 1;
+    s->echo_started = 0;
+    s->history_count = 0;
+    s->history_idx = 0;
     s->state = SR04_STATE_IDLE;
 }
 
-void Handle_Channel3(void)
-{
-    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) == GPIO_PIN_SET) {
-        SR04Left.start_time = Get_Tick_us(); // 记录回波开始时间 (上升沿)
-    } else {
-        SR04Left.end_time = Get_Tick_us();   // 记录回波结束时间 (下降沿)
-        if (SR04Left.state == SR04_STATE_WAITING) {
-            SR04Left.state = SR04_STATE_DONE;
-        }
+void SR04State_Machine(SR04_t* s) {
+    switch (s->state) {
+        case SR04_STATE_IDLE:    SR04_IDLE_FUNC(s);    break;
+        case SR04_STATE_WAITING: SR04_WAITING_FUNC(s); break;
+        case SR04_STATE_DONE:    SR04_DONE_FUNC(s);    break;
+        case SR04_STATE_LOST:    SR04_LOST_FUNC(s);    break;
+        default: break;
     }
 }
 
-void Handle_Channel4(void)
-{
-    if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_SET) {
-        SR04Right.start_time = Get_Tick_us(); 
+// ================= 中断处理 (核心修改区) =================
+// 【修改】去掉了 GPIO 读取，改为通过状态判断并动态切换极性
+static inline void Handle_EchoEdge(SR04_t* s, TIM_HandleTypeDef *htim, uint32_t TIM_Channel) {
+    if (s->state != SR04_STATE_WAITING) return; 
+
+    if (s->echo_started == 0) {
+        // 1. 第一次进中断：必然是上升沿
+        s->start_time = Get_Tick_us(); 
+        s->echo_started = 1; 
+        
+        // 【关键】将定时器通道配置为下降沿捕获
+        __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_Channel, TIM_INPUTCHANNELPOLARITY_FALLING);
     } else {
-        SR04Right.end_time = Get_Tick_us();   
-        if (SR04Right.state == SR04_STATE_WAITING) {
-            SR04Right.state = SR04_STATE_DONE;
-        }
+        // 2. 第二次进中断：必然是下降沿
+        s->end_time = Get_Tick_us();   
+        s->state = SR04_STATE_DONE;
+        
+        // 【关键】测试完成，立刻将定时器通道恢复为上升沿捕获，准备下一次测量
+        __HAL_TIM_SET_CAPTUREPOLARITY(htim, TIM_Channel, TIM_INPUTCHANNELPOLARITY_RISING);
     }
 }
 
-void SR04_TRIGleft(void)
-{
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+    if (htim->Instance != TIM3) return;
+    
+    // 注意这里传入的是 TIM_CHANNEL_X 宏，专门用于改变寄存器极性
+    if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
+        Handle_EchoEdge(&SR04Left, htim, TIM_CHANNEL_3);
+    }
+    else if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_4) {
+        Handle_EchoEdge(&SR04Right, htim, TIM_CHANNEL_4);
+    }
+}
+
+// ================= 初始化与外层控制 =================
+void SR04_TRIGleft(void) {
     HAL_GPIO_WritePin(GPIO_TRIG_Port, GPIO_PIN_TRIG_LEFT, GPIO_PIN_SET);
     Delay_us(15); 
     HAL_GPIO_WritePin(GPIO_TRIG_Port, GPIO_PIN_TRIG_LEFT, GPIO_PIN_RESET);
 }
 
-void SR04_TRIGright(void)
-{
+void SR04_TRIGright(void) {
     HAL_GPIO_WritePin(GPIO_TRIG_Port, GPIO_PIN_TRIG_RIGHT, GPIO_PIN_SET);
     Delay_us(15); 
     HAL_GPIO_WritePin(GPIO_TRIG_Port, GPIO_PIN_TRIG_RIGHT, GPIO_PIN_RESET);
 }
 
-void SR04_Init(void)
-{
+void SR04_Init(void) {
     SR04Left.distance = 0;
-    SR04Left.end_time = 0;
     SR04Left.lost_flag = 0;
-    SR04Left.start_time = 0;
-    SR04Left.time = 0;
+    SR04Left.echo_started = 0;
+    SR04Left.history_idx = 0;    
+    SR04Left.history_count = 0;  
     SR04Left.TRIG = SR04_TRIGleft;
+    SR04Left.state = SR04_STATE_IDLE; 
 
     SR04Right.distance = 0;
-    SR04Right.end_time = 0;
     SR04Right.lost_flag = 0;
-    SR04Right.start_time = 0;
-    SR04Right.time = 0;
+    SR04Right.echo_started = 0;
+    SR04Right.history_idx = 0;   
+    SR04Right.history_count = 0; 
     SR04Right.TRIG = SR04_TRIGright;
+    SR04Right.state = SR04_STATE_IDLE;
     
-    // 确保 TIM3 初始化为了输入捕获
-    HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_3);  // PB0
-    HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_4);  // PB1
+    uint8_t i; 
+    for(i=0; i<FILTER_WINDOW_SIZE; i++) {
+        SR04Left.history[i] = 0;
+        SR04Right.history[i] = 0;
+    }
+    
+    // 确保初始化时是上升沿捕获
+    __HAL_TIM_SET_CAPTUREPOLARITY(&htim3, TIM_CHANNEL_3, TIM_INPUTCHANNELPOLARITY_RISING);
+    __HAL_TIM_SET_CAPTUREPOLARITY(&htim3, TIM_CHANNEL_4, TIM_INPUTCHANNELPOLARITY_RISING);
+    
+    HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_3);  
+    HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_4);  
 }
 
-void SR04_LOOP(void)
-{
+void SR04_LOOP(void) {
     static uint32_t last_poll_tick = 0;
-    static uint8_t active_sensor = 0; // 0: 左边, 1: 右边
+    static uint8_t active_sensor = 0; 
 
-    // 每 50ms 轮换触发一个超声波，绝对防止声波打架！
-    if (HAL_GetTick() - last_poll_tick >= 50) 
-    {
+    if (HAL_GetTick() - last_poll_tick >= 50) {
         last_poll_tick = HAL_GetTick();
 
-        if (active_sensor == 0) {
-            if (SR04Left.state == SR04_STATE_IDLE) {
-                SR04Left.TRIG();
-                SR04Left.start_time = Get_Tick_us(); // 记录基准时间
-                SR04Left.state = SR04_STATE_WAITING;
-            }
-            active_sensor = 1; // 下一次测右边
-        } 
-        else {
-            if (SR04Right.state == SR04_STATE_IDLE) {
-                SR04Right.TRIG();
-                SR04Right.start_time = Get_Tick_us(); 
-                SR04Right.state = SR04_STATE_WAITING;
-            }
-            active_sensor = 0; // 下一次测左边
+        SR04_t *current_sensor = (active_sensor == 0) ? &SR04Left : &SR04Right;
+        uint32_t current_channel = (active_sensor == 0) ? TIM_CHANNEL_3 : TIM_CHANNEL_4;
+        
+        if (current_sensor->state == SR04_STATE_IDLE) {
+            
+            // 【终极防御】每次发射超声波前，强行重置捕获极性为上升沿！
+            // 防止发生“丢波”后，定时器一直卡在“等下降沿”的死锁状态
+            __HAL_TIM_SET_CAPTUREPOLARITY(&htim3, current_channel, TIM_INPUTCHANNELPOLARITY_RISING);
+
+            current_sensor->TRIG();
+            current_sensor->start_time = Get_Tick_us(); 
+            current_sensor->echo_started = 0;
+            current_sensor->state = SR04_STATE_WAITING;
         }
+        active_sensor ^= 1; 
     }
 
-    // 运行状态机，处理超时和结算
     SR04State_Machine(&SR04Left);
     SR04State_Machine(&SR04Right);
 }
 
-uint8_t SR04_GetFlag(uint8_t dir)
-{
-    if(dir == 0) return SR04Left.lost_flag;
-    else if(dir == 1) return SR04Right.lost_flag;
-    else return 0xff;
+uint8_t SR04_GetFlag(uint8_t dir) {
+    return (dir == 0) ? SR04Left.lost_flag : ((dir == 1) ? SR04Right.lost_flag : 0xff);
 }
 
-fp16_int32_t SR04_GetDistance(uint8_t dir)
-{
-    if(dir == 0) return SR04Left.distance;
-    else if(dir == 1) return SR04Right.distance;
-    else return 0xff;
-}
-
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance != TIM3) return;
-    
-    if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-        Handle_Channel3();
-    }
-    else if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_4) {
-        Handle_Channel4();
-    }
+fp16_int32_t SR04_GetDistance(uint8_t dir) {
+    return (dir == 0) ? SR04Left.distance : ((dir == 1) ? SR04Right.distance : 0xff);
 }

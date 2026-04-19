@@ -77,7 +77,7 @@ void setup()
     Menu_AddItem(&item_stop); 
     DWT_Init();
     UART2_Receive_IT_Start();
-//    SR04_Init();
+    SR04_Init();
     Sys_Base_us_Init();
     
     HAL_Delay(1000);
@@ -88,7 +88,7 @@ void setup()
 void loop()
 {
 	LED_Shark();
-//    SR04_LOOP();
+    SR04_LOOP();
 
     IMU_Update();
     Mc_StateMachine();
@@ -130,8 +130,8 @@ void OLED_Reflash(void)
 		
 		// DDP_Update(&ddpYaw); 
         
-        // SSD1306_Driver_WriteFP16(20, 7, SR04_GetDistance(0));
-        SSD1306_Driver_WriteIntNums(20,7,HAL_GetTick());
+        SSD1306_Driver_WriteFP16(20, 7, SR04_GetDistance(0));
+//        SSD1306_Driver_WriteIntNums(20,7,HAL_GetTick());
         SSD1306_Driver_Update();
     }
 }
