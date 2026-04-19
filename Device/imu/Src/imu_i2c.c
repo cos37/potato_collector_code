@@ -8,6 +8,7 @@
 #define IMU_ADDR_WRITE          0x46     /* 0x46 */
 #define IMU_ADDR_READ           0x47     /* 0x47 */
 
+extern I2C_HandleTypeDef hi2c2;
 
 
 
