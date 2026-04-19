@@ -4,10 +4,18 @@
 #include "stm32f1xx_hal.h"      // 仅改这一行
 #include <stdint.h>
 
+
+#ifdef USE_UART1
 /* 新增DMA接口 */
 void Motor_Buf_Init(void);
 void Motor_Set_Vel(uint8_t id, uint8_t dir, uint16_t vel);
 void DMA_State_Machine(void);
+#endif
+
+#ifdef USE_CAN1
+/* CAN接口 */
+void CAN1_Init(void);
+#endif
 
 /* 函数声明与原来完全一致 */
 void Emm_V5_En_Control(uint8_t addr, FlagStatus state, FlagStatus snF);

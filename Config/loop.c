@@ -12,7 +12,7 @@
 #include "imu_driver.h"
 #include "application.h"
 #include "hc-sr04.h"
-
+#include "Bujin.h"
 
 void Toggle_LED1(void)
 {
@@ -79,6 +79,7 @@ void setup()
     UART2_Receive_IT_Start();
 //    SR04_Init();
     Sys_Base_us_Init();
+    
     HAL_Delay(1000);
 
 }
@@ -88,6 +89,7 @@ void loop()
 {
 	LED_Shark();
 //    SR04_LOOP();
+
     IMU_Update();
     Mc_StateMachine();
     Application_Loop();

@@ -1,3 +1,18 @@
+#define USE_CAN1
+
+#include "Bujin.h"
+#ifdef USE_UART1
+#include "usart.h" /* 包含串口发送接口 */
+#elif defined(USE_CAN1)
+#include "can.h"   /* 包含CAN发送接口 */
+#endif
+#include <string.h>
+// extern UART_HandleTypeDef huart1; /* 串口 1 句柄，定义在 usart.c 中 */
+// extern CAN_HandleTypeDef hcan1;   /* CAN 1 句柄，定义在 can.c 中 */
+
+
+#if defined(USE_UART1)
+
 /**
  **********************************************************
  * 文件：Bujin.c
@@ -7,10 +22,6 @@
  * 用法：任意 .c 文件包含 "Bujin.h" 后调用
  **********************************************************
  */
-#include "Bujin.h"
-#include "usart.h" /* 包含串口发送接口 */
-#include <string.h>
-extern UART_HandleTypeDef huart1; /* 串口 1 句柄，定义在 usart.c 中 */
 
 // ========== 配置 ==========
 #define MOTOR_NUM       4
@@ -286,3 +297,286 @@ void motor_to_angle_control(uint8_t addr, float angle, uint16_t vel, uint8_t acc
     uint32_t pulse = (uint32_t)(3200.0f * angle / 360.0f + 0.5f); /* 四舍五入 */
     Emm_V5_Pos_Control(addr, dir, vel, acc, pulse, RESET, RESET); /* 相对运动 */
 }
+#endif
+
+#if defined(USE_CAN1)
+
+/**
+ * @brief  CAN 版本的电机控制函数实现
+ * 
+ */
+
+
+
+ void CAN1_Init(void)
+ {
+    CAN_FilterTypeDef sFilterConfig;
+    
+    // 计算掩码：只匹配地址1-5，包序号任意
+    // 地址在 bit[15:8]，所以掩码需要覆盖这8位中的低3位（因为5=101，需要3位区分）
+    // 但实际上 1-5 的范围是 0b00000001 到 0b00000101
+    // 用掩码 0x07FF = 0b0000011111111111 可以匹配 0x0000-0x0007（地址0-7）
+    
+    sFilterConfig.FilterBank = 0;
+    sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+    sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+    
+    // ID：基地址 0x00000100（地址1，第0包）
+    sFilterConfig.FilterIdHigh = 0x0000;
+    sFilterConfig.FilterIdLow = (0x0100 << 3) | 0x04;  // 0x0804
+    
+    // 掩码：地址0-7都接收（0x0000-0x0007），包序号任意（0x00-0xFF）
+    // 掩码值：0x07FF << 3 = 0x3FF8，再加上 IDE=1
+    sFilterConfig.FilterMaskIdHigh = 0x0000;
+    sFilterConfig.FilterMaskIdLow = (0x07FF << 3) | 0x04;  // 0x3FFC
+    
+    sFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+    sFilterConfig.FilterActivation = ENABLE;
+    
+    HAL_CAN_ConfigFilter(&hcan, &sFilterConfig);
+
+    HAL_CAN_Start(&hcan);
+
+ }
+
+
+
+/* 细分对应脉冲数（默认16细分=3200脉冲/圈，1.8°电机）*/
+#define EM_V5_PULSE_PER_CIRCLE    3200U
+
+/**
+ * @brief  CAN底层发送函数（自动处理单包/多包分包逻辑）
+ * @param  addr: 电机地址 1-255（0为广播）
+ * @param  cmd:  命令数据缓冲区（不含地址字节，包含功能码+数据+0x6B校验）
+ * @param  len:  命令数据长度
+ * @retval 0:成功, 1:失败
+ */
+static uint8_t CAN_EmmV5_Send(uint8_t addr, uint8_t *cmd, uint8_t len)
+{
+    CAN_TxHeaderTypeDef TxHeader;
+    uint8_t TxData[8];
+    uint32_t TxMailbox;
+    uint8_t pkg_num = 0;
+    uint8_t sent = 0;
+
+    TxHeader.IDE = CAN_ID_EXT;       // 扩展帧
+    TxHeader.RTR = CAN_RTR_DATA;     // 数据帧
+
+    while (sent < len)
+    {
+        /* 帧ID = 地址<<8 | 包序号 */
+        TxHeader.ExtId = ((uint32_t)addr << 8) | pkg_num;
+
+        if (pkg_num == 0)
+        {
+            /* 第一包：直接取原始数据前8字节 */
+            uint8_t n = (len > 8) ? 8 : len;
+            memcpy(TxData, cmd, n);
+            TxHeader.DLC = n;
+            sent += n;
+        }
+        else
+        {
+            /* 后续包：第1字节必须是功能码，后面接剩余数据 */
+            TxData[0] = cmd[0];  // 功能码
+            uint8_t remain = len - sent;
+            if (remain > 7) remain = 7;
+            memcpy(&TxData[1], &cmd[sent], remain);
+            TxHeader.DLC = 1 + remain;
+            sent += remain;
+        }
+
+        /* 等待发送邮箱空闲（超时10ms）*/
+        uint32_t tickstart = HAL_GetTick();
+        while (HAL_CAN_GetTxMailboxesFreeLevel(&hcan) == 0)
+        {
+            // if ((HAL_GetTick() - tickstart) > 10U)
+            //     return 1;
+        }
+
+        if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+            return 1;
+
+        pkg_num++;
+    }
+    return 0;
+}
+
+/* ============================================================
+ * 控制动作命令
+ * ============================================================ */
+
+/**
+ * @brief  电机使能控制
+ * @param  addr:  电机地址 1-5
+ * @param  state: SET=使能, RESET=不使能
+ * @param  snF:   SET=启用多机同步标志(等同步指令), RESET=立即执行
+ */
+void Emm_V5_En_Control(uint8_t addr, FlagStatus state, FlagStatus snF)
+{
+    uint8_t cmd[6];
+    cmd[0] = 0xF3;
+    cmd[1] = 0xAB;
+    cmd[2] = (state == SET) ? 0x01 : 0x00;
+    cmd[3] = (snF == SET) ? 0x01 : 0x00;
+    cmd[4] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 5);
+}
+
+/**
+ * @brief  立即停止（紧急刹车）
+ * @param  addr: 电机地址
+ * @param  snF:  多机同步标志
+ */
+void Emm_V5_Stop_Now(uint8_t addr, FlagStatus snF)
+{
+    uint8_t cmd[4];
+    cmd[0] = 0xFE;
+    cmd[1] = 0x98;
+    cmd[2] = (snF == SET) ? 0x01 : 0x00;
+    cmd[3] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 4);
+}
+
+/**
+ * @brief  速度模式控制
+ * @param  addr: 电机地址
+ * @param  dir:  0x00=CW, 0x01=CCW
+ * @param  vel:  目标转速，单位 RPM（如 1500 = 0x05DC）
+ * @param  acc:  加速度档位 0-255（0=直接启动，无曲线加减速）
+ * @param  snF:  多机同步标志
+ */
+void Emm_V5_Vel_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc, FlagStatus snF)
+{
+    uint8_t cmd[7];
+    cmd[0] = 0xF6;
+    cmd[1] = dir;
+    cmd[2] = (vel >> 8) & 0xFF;  // 速度高字节
+    cmd[3] = vel & 0xFF;         // 速度低字节
+    cmd[4] = acc;
+    cmd[5] = (snF == SET) ? 0x01 : 0x00;
+    cmd[6] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 7);
+}
+
+/**
+ * @brief  位置模式控制
+ * @param  addr: 电机地址
+ * @param  dir:  0x00=CW, 0x01=CCW
+ * @param  vel:  目标转速，单位 RPM
+ * @param  acc:  加速度档位 0-255
+ * @param  clk:  脉冲数（0x00000000 - 0xFFFFFFFF）
+ * @param  raF:  SET=绝对位置模式, RESET=相对位置模式
+ * @param  snF:  多机同步标志
+ * @note   此命令大于8字节，会自动拆分为2包发送
+ */
+void Emm_V5_Pos_Control(uint8_t addr, uint8_t dir, uint16_t vel, uint8_t acc,
+                        uint32_t clk, FlagStatus raF, FlagStatus snF)
+{
+    uint8_t cmd[12];
+    cmd[0] = 0xFD;
+    cmd[1] = dir;
+    cmd[2] = (vel >> 8) & 0xFF;
+    cmd[3] = vel & 0xFF;
+    cmd[4] = acc;
+    cmd[5] = (clk >> 24) & 0xFF;  // 脉冲数 Byte3 (MSB)
+    cmd[6] = (clk >> 16) & 0xFF;  // 脉冲数 Byte2
+    cmd[7] = (clk >> 8) & 0xFF;   // 脉冲数 Byte1
+    cmd[8] = clk & 0xFF;          // 脉冲数 Byte0 (LSB)
+    cmd[9] = (raF == SET) ? 0x01 : 0x00;   // 相对(00)/绝对(01)
+    cmd[10] = (snF == SET) ? 0x01 : 0x00;  // 同步标志
+    cmd[11] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 12);
+}
+
+/* ============================================================
+ * 参数修改命令
+ * ============================================================ */
+
+/**
+ * @brief  修改开环/闭环控制模式（对应屏幕 P_Pul 菜单）
+ * @param  addr:      电机地址
+ * @param  svF:       SET=保存到芯片(断电保持), RESET=不保存
+ * @param  ctrl_mode: 0x01=开环(PUL_OPEN), 0x02=FOC闭环(PUL_FOC)
+ */
+void Emm_V5_Modify_Ctrl_Mode(uint8_t addr, FlagStatus svF, uint8_t ctrl_mode)
+{
+    uint8_t cmd[5];
+    cmd[0] = 0x46;
+    cmd[1] = 0x69;
+    cmd[2] = (svF == SET) ? 0x01 : 0x00;
+    cmd[3] = ctrl_mode;
+    cmd[4] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 5);
+}
+
+/**
+ * @brief  解除堵转保护
+ * @param  addr: 电机地址
+ */
+void Emm_V5_Reset_Clog_Pro(uint8_t addr)
+{
+    uint8_t cmd[3];
+    cmd[0] = 0x0E;
+    cmd[1] = 0x52;
+    cmd[2] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 3);
+}
+
+/* ============================================================
+ * 多机同步控制
+ * ============================================================ */
+
+/**
+ * @brief  触发多机同步运动
+ * @param  addr: 通常填 0（广播地址），或指定某电机地址
+ * @note   先对各电机发送带 snF=SET 的速度/位置指令，再发此指令，所有电机会同时开始运动
+ */
+void Emm_V5_Synchronous_motion(uint8_t addr)
+{
+    uint8_t cmd[3];
+    cmd[0] = 0xFF;
+    cmd[1] = 0x66;
+    cmd[2] = 0x6B;
+    CAN_EmmV5_Send(addr, cmd, 3);
+}
+
+/* ============================================================
+ * 应用层封装
+ * ============================================================ */
+
+/**
+ * @brief  角度控制（相对位置模式封装）
+ * @param  addr:  电机地址
+ * @param  angle: 目标角度（正数CW，负数CCW；单位：度）
+ * @param  vel:   目标转速，单位 RPM
+ * @param  acc:   加速度档位 0-255
+ * @note   基于16细分（3200脉冲/圈）计算。若使用其他细分，请修改 EM_V5_PULSE_PER_CIRCLE
+ */
+void motor_to_angle_control(uint8_t addr, float angle, uint16_t vel, uint8_t acc)
+{
+    uint8_t dir;
+    float abs_angle;
+    uint32_t pulse;
+
+    if (angle >= 0.0f)
+    {
+        dir = 0x00;       // CW
+        abs_angle = angle;
+    }
+    else
+    {
+        dir = 0x01;       // CCW
+        abs_angle = -angle;
+    }
+
+    /* 16细分：3200脉冲 = 360° */
+    pulse = (uint32_t)(abs_angle / 360.0f * (float)EM_V5_PULSE_PER_CIRCLE + 0.5f);
+
+    Emm_V5_Pos_Control(addr, dir, vel, acc, pulse, RESET, RESET);
+}
+
+
+
+#endif
+
