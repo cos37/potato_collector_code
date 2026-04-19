@@ -49,6 +49,7 @@ void MC_Init(void);
 void Mc_StateMachine(void);
 void MC_Service_Enable(fp16_int32_t target_angle,RUNNING_STATE_t dir,uint16_t time);
 void MC_Service_Disable(void);
+void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed);
 void MC2XP(void);
 void MC2XN(void);
 void MC2YP(void);

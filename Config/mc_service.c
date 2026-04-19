@@ -38,6 +38,7 @@ void Move_Y_POSITIVE(const fp16_int32_t target_angle, const fp16_int32_t current
 void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
 void Move_X_Positive(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
 void Move_X_Negative(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
+void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed);
 void MC_DISABLE_FUNC(void);
 void MC_ENABLE_FUNC(void);
 void MC_RUNNING_FUNC(void);
@@ -230,6 +231,13 @@ void Mc_StateMachine(void)
         default:
             break;
     }
+}
+
+
+void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed)
+{
+    // 最后一个参数传 RESET，代表立即执行，不参与 0xFF 同步
+    Emm_V5_Vel_Control(5, dir, speed, 0, RESET);
 }
 
 void MC_DISABLE_FUNC(void)
