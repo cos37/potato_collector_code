@@ -34,11 +34,9 @@ void Move_stop(void)
     MC_Service_Disable();
 }
 
-MenuItem_t item1 = {.name = "TLED1", .task = Toggle_LED1};
-MenuItem_t item2 = {.name = "TLED2", .task = Toggle_LED2};
 MenuItem_t item_move = {.name = "MOVE", .task = Move_req};
 MenuItem_t item_stop = {.name = "STOP", .task = Move_stop};
-
+MenuItem_t iten_target_imu_up = {.name ="UP",.task = APP_UPTARGETIMU};
 DDP_Handle_t ddpYaw= {
     .page = 0,
     .line_start = 0,
@@ -71,10 +69,9 @@ void setup()
     MC_Init();
     Menu_Init();
 	Key_Init();
-    Menu_AddItem(&item1);
-    Menu_AddItem(&item2);
     Menu_AddItem(&item_move);
     Menu_AddItem(&item_stop); 
+		Menu_AddItem(&iten_target_imu_up);
     DWT_Init();
     UART2_Receive_IT_Start();
     SR04_Init();
@@ -130,7 +127,7 @@ void OLED_Reflash(void)
 		
 		// DDP_Update(&ddpYaw); 
         
-        SSD1306_Driver_WriteFP16(20, 7, SR04_GetDistance(0));
+        SSD1306_Driver_WriteFP16(20, 7, imuHandle.yaw);
 //        SSD1306_Driver_WriteIntNums(20,7,HAL_GetTick());
         SSD1306_Driver_Update();
     }

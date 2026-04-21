@@ -4,7 +4,7 @@
 #include "stm32f1xx_hal.h"      // 仅改这一行
 #include <stdint.h>
 
-
+#define USE_CAN1
 #ifdef USE_UART1
 /* 新增DMA接口 */
 void Motor_Buf_Init(void);

@@ -38,7 +38,7 @@ void Move_Y_POSITIVE(const fp16_int32_t target_angle, const fp16_int32_t current
 void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
 void Move_X_Positive(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
 void Move_X_Negative(const fp16_int32_t target_angle, const fp16_int32_t current_angle);
-void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed);
+void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed, uint32_t pulse);
 void MC_DISABLE_FUNC(void);
 void MC_ENABLE_FUNC(void);
 void MC_RUNNING_FUNC(void);
@@ -58,11 +58,11 @@ void MC_Init(void)
 {
     CAN1_Init();
     pai = fp16_from_float(3.1415926f);
-    move_vel = fp16_from_float(1.0f);  // 设定一个默认的移动速度
-    pidYaw.kp = fp16_from_float(0.8f);
-    pidYaw.ki = fp16_from_float(0.0f);
-    pidYaw.kd = fp16_from_float(0.0f);
-	diff = fp16_from_float(0.08);
+    move_vel = fp16_from_float(1.2f);  // 设定一个默认的移动速度
+    pidYaw.kp = fp16_from_float(0.64f);
+    pidYaw.ki = fp16_from_float(0.15f);
+    pidYaw.kd = fp16_from_float(0.05f);
+	diff = fp16_from_float(0.00);
     Mecanum_Init();
     
     Emm_V5_En_Control(1, SET, SET);
@@ -134,7 +134,7 @@ void Move_Y_POSITIVE(const fp16_int32_t target_angle, const fp16_int32_t current
     // SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
     // SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
     fp16_int32_t omega = Pid_Calculate(&pidYaw);
-    Mecanum_kinematics(0,move_vel,-omega);
+    Mecanum_kinematics(-diff,move_vel,-omega);
 }
 
 void Move_Y_NEGATIVE(const fp16_int32_t target_angle, const fp16_int32_t current_angle)
@@ -234,16 +234,23 @@ void Mc_StateMachine(void)
 }
 
 
-void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed)
+
+void Mechanism_Motor5_Control(uint8_t dir, uint16_t speed, uint32_t pulse)
 {
-    // 最后一个参数传 RESET，代表立即执行，不参与 0xFF 同步
-    Emm_V5_Vel_Control(5, dir, speed, 0, RESET);
+    Emm_V5_Pos_Control(5, dir, speed, 0, pulse, RESET, RESET);
 }
 
 void MC_DISABLE_FUNC(void)
 {
     // HAL_Delay(40);
-    return;
+//	pidYaw.target = target_angle;
+//  pidYaw.current = current_angle;
+//    // SSD1306_Driver_WriteFP16(0,6,abs_speed(target_angle));
+//    // SSD1306_Driver_WriteFP16(0,7,abs_speed(current_angle));
+//    fp16_int32_t omega = Pid_Calculate(&pidYaw);
+	Mecanum_kinematics(0,0,0);
+	Mecanum_Update();
+  return;
 }
 
 void MC_ENABLE_FUNC(void)

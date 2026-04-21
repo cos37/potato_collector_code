@@ -11,6 +11,20 @@
 
 #define Get_ms() HAL_GetTick()
 #define Get_us() Get_Tick_us()
+#define M5_SWEEP_SPEED 1000   // 摆动速度 (RPM)
+#define M5_SWEEP_PULSE 25000  // 单次摆动总脉冲数
+#define M5_SWEEP_TIME  500
+
+typedef enum {
+    M5_STATE_STOP = 0,
+    M5_STATE_CW,
+    M5_STATE_WAIT_CW,
+    M5_STATE_CCW,
+    M5_STATE_WAIT_CCW
+} M5_Sweep_State_t;
+
+static M5_Sweep_State_t m5_state = M5_STATE_STOP;
+static uint32_t m5_start_time = 0;
 
 typedef enum 
 {
@@ -30,6 +44,9 @@ void APPLICATION_KUALONG1_FUNC(void);
 void APPLICATION_KUALONG2_FUNC(void);
 void APPLICATION_MOVETONEXT_FUNC(void);
 void APPLICATION_CAMEBACK_FUNC(void);
+void Motor5_Sweep_Loop(void);
+void Start_Motor5_Sweep(void);
+void Stop_Motor5_Sweep(void);
 
 void Application_Loop(void)
 {
@@ -57,6 +74,7 @@ void Application_Loop(void)
     default:
         break;
     }
+		Motor5_Sweep_Loop();
 }
 
 void APPLICATION_IDLE_FUNC(void)
@@ -68,7 +86,7 @@ void APPLICATION_IDLE_FUNC(void)
  * @brief 进入部分状态机函数
  */
 #define ENTRY_XN_TIME 10000 //5s
-
+fp16_int32_t target_yaw;
 void APPLICATION_ENTRY_FUNC(void)
 {
     //内部状态机
@@ -77,9 +95,9 @@ void APPLICATION_ENTRY_FUNC(void)
     
     if(Entrystate == 0 ) //启动状态
     {
-        
-        MC_Service_Enable(imuHandle.yaw,MOVE_X_POSITIVE,ENTRY_XN_TIME);
-        Mechanism_Motor5_Control(0, 30);
+        target_yaw = imuHandle.yaw;
+        MC_Service_Enable(target_yaw,MOVE_X_POSITIVE,ENTRY_XN_TIME);
+				Start_Motor5_Sweep();
         Entrystate = 1 ; //更改状态
 
     }else if (Entrystate == 1) //
@@ -107,7 +125,7 @@ void APPLICATION_ENTRY_FUNC(void)
  * @brief 胯隆部分的状态机函数
  */
 
-#define TIME_LONG 30000 //5s
+#define TIME_LONG 20000 //5s
 
 void APPLICATION_KUALONG1_FUNC(void)
 {
@@ -116,7 +134,8 @@ void APPLICATION_KUALONG1_FUNC(void)
     
     if(KuaLong_State == 0)
     {
-        MC_Service_Enable(imuHandle.yaw, MOVE_Y_NEGATIVE, TIME_LONG);
+        MC_Service_Enable(target_yaw, MOVE_Y_NEGATIVE, TIME_LONG);
+				Start_Motor5_Sweep();
         KuaLong_State = 1 ;
     }
     else if (KuaLong_State == 1)
@@ -156,7 +175,7 @@ void APPLICATION_MOVETONEXT_FUNC(void)
     if (MoveNextState == 0) // 第0步：启动状态
     {
         // 告诉底层：保持当前车头角度，向右平移，运行 500ms
-        MC_Service_Enable(imuHandle.yaw, MOVE_X_POSITIVE, TIME_MOVETONEXT);
+        MC_Service_Enable(target_yaw, MOVE_X_POSITIVE, TIME_MOVETONEXT);
         MoveNextState = 1; // 指令下达完毕，切到监工状态
         
     }
@@ -195,7 +214,7 @@ void APPLICATION_KUALONG2_FUNC(void)
     
     if(KuaLong_State == 0)
     {
-        MC_Service_Enable(imuHandle.yaw, MOVE_Y_POSITIVE, TIME_LONG);
+        MC_Service_Enable(target_yaw, MOVE_Y_POSITIVE, TIME_LONG);
         KuaLong_State = 1 ;
     }
     else if (KuaLong_State == 1)
@@ -215,7 +234,7 @@ void APPLICATION_KUALONG2_FUNC(void)
             KuaLong_State = 0;
             
             // 跨陇2结束，所有的陇都收完了，交接给最终任务：返航
-            ast = APPLICATION_STATE_CAMEBACK; 
+            ast = APPLICATION_STATE_IDLE; 
         }
     }
 }
@@ -234,11 +253,76 @@ void APPLICATION_CAMEBACK_FUNC(void)
  */
 void APP_ENABLE(void)
 {
-    ast = APPLICATION_STATE_ENTRY;
+    ast = APPLICATION_STATE_KUALONG1;
 }
 
+void APP_UPTARGETIMU(void)
+{
+	target_yaw = imuHandle.yaw;
+}
 void APP_DISABLE(void)
 {
     ast = APPLICATION_STATE_IDLE;
 }
 
+void APP_Test_KUANLONGFUNC(void)
+{
+	ast = APPLICATION_STATE_KUALONG1;
+}
+
+
+
+
+
+
+void Start_Motor5_Sweep(void)
+{
+    if (m5_state == M5_STATE_STOP) {
+        m5_state = M5_STATE_CW; // 从顺时针开始
+    }
+}
+
+void Stop_Motor5_Sweep(void)
+{
+    m5_state = M5_STATE_STOP;
+    // 此处可以加一句让电机5紧急停止的底层代码，防止它在惯性下继续转
+    // Emm_V5_Stop_Now(5, RESET); 
+}
+
+void Motor5_Sweep_Loop(void)
+{
+    switch (m5_state)
+    {
+    case M5_STATE_STOP:
+        // 停止状态，什么都不做
+        break;
+
+    case M5_STATE_CW:
+        // 发送正转指令
+        Mechanism_Motor5_Control(0, M5_SWEEP_SPEED, M5_SWEEP_PULSE);
+        m5_start_time = Get_ms();     // 记录时间
+        m5_state = M5_STATE_WAIT_CW;  // 切入等待状态
+        break;
+
+    case M5_STATE_WAIT_CW:
+        // 等待正转时间耗尽
+        if (Get_ms() - m5_start_time >= M5_SWEEP_TIME) {
+            m5_state = M5_STATE_CCW;  // 时间到，准备反转
+        }
+        break;
+
+    case M5_STATE_CCW:
+        // 发送反转指令
+        Mechanism_Motor5_Control(1, M5_SWEEP_SPEED, M5_SWEEP_PULSE);
+        m5_start_time = Get_ms();      // 记录时间
+        m5_state = M5_STATE_WAIT_CCW;  // 切入等待状态
+        break;
+
+    case M5_STATE_WAIT_CCW:
+        // 等待反转时间耗尽
+        if (Get_ms() - m5_start_time >= M5_SWEEP_TIME) {
+            m5_state = M5_STATE_CW;    // 时间到，准备正转
+        }
+        break;
+    }
+}

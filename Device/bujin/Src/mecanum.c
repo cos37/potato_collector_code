@@ -108,7 +108,8 @@ void Mecanum_Update(void)
     Emm_V5_Vel_Control(mecaunm.llw.id,mecaunm.llw.dir,mecaunm.llw.speed,0,RESET);
     Emm_V5_Vel_Control(mecaunm.lrw.id,mecaunm.lrw.dir,mecaunm.lrw.speed,0,RESET);
 
-    Emm_V5_Synchronous_motion(0xFF);
+//    Emm_V5_Synchronous_motion(0xFF);
+	HAL_Delay(3);
     // Motor_Set_Vel(mecaunm.flw.id,mecaunm.flw.dir,mecaunm.flw.speed);
     // Motor_Set_Vel(mecaunm.frw.id,mecaunm.frw.dir,mecaunm.frw.speed);
     // Motor_Set_Vel(mecaunm.llw.id,mecaunm.llw.dir,mecaunm.llw.speed);
