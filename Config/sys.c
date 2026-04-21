@@ -2,6 +2,7 @@
 #include "tim.h"
 #include <stdint.h>
 #include "stm32f1xx_hal.h"
+#include "usart.h"
 
 void (*Sys_Task_TIM2)(void) = 0;
 void (*Sys_Task_TIM3)(void) = 0;
@@ -180,3 +181,55 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 }
 
+
+/**
+ * @brief 提供串口的回调服务
+ * 
+ */
+void (*Sys_UART1_RxIT_Callback)(void) = 0;
+void (*Sys_UART2_RxIT_Callback)(void) = 0;
+void (*Sys_UART3_RxIT_Callback)(void) = 0;
+
+
+void SYS_EnableUARTx_RXIT_CB(UART_HandleTypeDef *huart, void (*callback)(void))
+{
+    if (huart->Instance == USART1) {
+        Sys_UART1_RxIT_Callback = callback;
+    }else if (huart->Instance == USART2) {
+        Sys_UART2_RxIT_Callback = callback;
+    }else if (huart->Instance == USART3) {
+        Sys_UART3_RxIT_Callback = callback;
+    }
+    
+
+}
+
+void SYS_DisableUARTx_RXIT_CB(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        Sys_UART1_RxIT_Callback = 0;
+    }else if (huart->Instance == USART2) {
+        Sys_UART2_RxIT_Callback = 0;
+    }else if (huart->Instance == USART3) {
+        Sys_UART3_RxIT_Callback = 0;
+    }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+ {
+    if(huart->Instance == USART1) {
+        if(Sys_UART1_RxIT_Callback != 0) {
+            Sys_UART1_RxIT_Callback();
+        }
+    }else if(huart->Instance == USART2) {
+        if(Sys_UART2_RxIT_Callback != 0) {
+            Sys_UART2_RxIT_Callback();
+        }
+    }else if(huart->Instance == USART3) {
+        if(Sys_UART3_RxIT_Callback != 0) {
+            Sys_UART3_RxIT_Callback();
+        }
+    }
+
+
+}

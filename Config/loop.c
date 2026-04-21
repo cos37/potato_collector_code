@@ -13,6 +13,8 @@
 #include "application.h"
 #include "hc-sr04.h"
 #include "Bujin.h"
+#include "tof.h"
+
 
 void Toggle_LED1(void)
 {
@@ -76,6 +78,7 @@ void setup()
     UART2_Receive_IT_Start();
     SR04_Init();
     Sys_Base_us_Init();
+    TOF_Init();
     
     HAL_Delay(1000);
 
@@ -86,7 +89,11 @@ void loop()
 {
 	LED_Shark();
     SR04_LOOP();
+<<<<<<< HEAD
 
+=======
+    TOF_LOOP();
+>>>>>>> be31fa25f0d693064936bfa3cb5df95319bb5fa1
     IMU_Update();
     Mc_StateMachine();
     Application_Loop();
@@ -127,7 +134,7 @@ void OLED_Reflash(void)
 		
 		// DDP_Update(&ddpYaw); 
         
-        SSD1306_Driver_WriteFP16(20, 7, imuHandle.yaw);
+        SSD1306_Driver_WriteFP16(20, 7, TOF_GetDistance(0x01));
 //        SSD1306_Driver_WriteIntNums(20,7,HAL_GetTick());
         SSD1306_Driver_Update();
     }
